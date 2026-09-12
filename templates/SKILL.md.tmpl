@@ -1,0 +1,36 @@
+---
+name: <skill-name>
+description: "<这个技能做什么、什么时候该用它>"
+# 仅允许用户手动调用时，打开下一行；需要被模型自动触发时，删除该行并在 description 里写清触发场景
+# disable-model-invocation: true
+---
+
+# <技能标题>
+
+<一到两句话说明这个技能要达成什么、交付什么。>
+
+## 何时使用
+
+- <触发场景 1>
+- <触发场景 2>
+
+## 步骤
+
+1. <第一步>
+2. <第二步>
+
+## 引用文件
+
+<!-- 只有真实需要时才创建 references/ 或 scripts/，并在此写明「何时读取 / 何时调用」 -->
+
+- 详细规则 → `references/<name>.md`
+- 辅助脚本 → `scripts/<name>.py`
+
+调用脚本**必须用绝对路径**（Bash 的 cwd 是用户项目目录，不是技能目录），指令里禁止写 `python scripts/<name>.py` 这种相对路径：
+
+```bash
+SKILL_DIR="${ZCODE_SKILL_DIR}"   # 未展开时改用 ${CLAUDE_SKILL_DIR} 或本技能 base directory 的绝对路径
+python "$SKILL_DIR/scripts/<name>.py" --help
+```
+
+优先用 `uv run --no-project "$SKILL_DIR/scripts/<name>.py"` 调用：uv 自带 Python，一条命令跨全平台，也不必为不同系统各写启动器。
