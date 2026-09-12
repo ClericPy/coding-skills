@@ -216,3 +216,15 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# skills CLI 的本地锁文件（npx skills add 在消费方仓库生成）
+skills-lock.json
+
+# AI Agent 工作产物与技能安装目标（npx skills add 会把技能副本装到这些目录，不应提交）
+.zcode/
+.agents/
+.claude/
+
+# 跨平台系统垃圾文件
+.DS_Store
+Thumbs.db
