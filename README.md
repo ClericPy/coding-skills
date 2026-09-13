@@ -59,7 +59,7 @@ npx skills add ClericPy/coding-skills -a zcode --skill change-linter -y
 
 ## 采用同款全局规范（可选）
 
-[`templates/AGENTS.md`](./templates/AGENTS.md) 是作者的全局工程规范示例（含与 `change-linter` 技能的联动写法）。想要同款：把它复制到 `~/.zcode/AGENTS.md`（或项目根 `AGENTS.md`），再按项目裁剪；**已有配置时先对比合并，不要直接覆盖**——全局规范是每个人自己的东西，技能不会也不会替你装它。
+[`templates/AGENTS.md`](./templates/AGENTS.md) 是作者在用的全局工程规范（与 `change-linter` 技能联动），可整份采用。想要同款：把它复制到 `~/.zcode/AGENTS.md`（或项目根 `AGENTS.md`），再按项目裁剪；用作项目级时按 [agents.md](https://agents.md) 标准建议补构建/测试命令、项目约定与安全注意事项；**已有配置时先对比合并，不要直接覆盖**——全局规范是每个人自己的东西，技能不会也不会替你装它。
 
 ## 依赖工具
 

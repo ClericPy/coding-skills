@@ -12,7 +12,7 @@ coding-skills/
 │   └── scripts/               可选：技能调用的辅助脚本
 ├── templates/                 骨架与示例，不参与技能发现
 │   ├── SKILL.md.tmpl          新技能起点
-│   └── AGENTS.md              AGENTS.md 写法示例
+│   └── AGENTS.md              AGENTS.md 成稿（可整份采用）
 ├── scripts/validate.py        仓库自检
 ├── tests/                     回归测试（不随技能分发）
 │   ├── test_verify.py         脚本行为
