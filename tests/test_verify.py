@@ -141,6 +141,89 @@ class VerifyCliTest(CliTestCase):
         self.assertEqual(code, 1)
         self.assertIn("SyntaxError", out)
 
+    def test_deleted_file_is_not_linted(self) -> None:
+        """删除 .py 是合法改动：不存在的路径不得送检而误报失败。"""
+        repo = self.make_repo({"gone.py": CLEAN_PY})
+        subprocess.run(  # noqa: S603
+            [GIT, "add", "-A"], cwd=str(repo), capture_output=True, check=True
+        )
+        subprocess.run(  # noqa: S603
+            [GIT, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "i"],
+            cwd=str(repo),
+            capture_output=True,
+            check=True,
+        )
+        (repo / "gone.py").unlink()
+        code, out = self.run_cli(VERIFY, repo, "--level", "L1")
+        self.assertEqual(code, 0, out)
+        self.assertIn("无适用校验对象", out)
+
+    def test_cjk_filename_is_discovered(self) -> None:
+        """非 ASCII 文件名必须原样发现：git 默认把这类路径转义成八进制。"""
+        repo = self.make_repo({"中文测试.py": CLEAN_PY})
+        code, out = self.run_cli(VERIFY, repo, "--level", "L1")
+        self.assertEqual(code, 0, out)
+        self.assertIn("全部通过", out)
+
+    def test_project_scope_catches_downstream_breakage(self) -> None:
+        """--project-scope 让类型工具扫整个项目：改签名破坏的下游调用方必须被扫出。
+
+        默认只查改动文件——a.py 改了签名、clean 的 caller.py 不在检查范围，漏报；
+        项目级扫描时 caller.py 的存量类型错误被暴露。
+        """
+        if not shutil.which("pyrefly"):
+            self.skipTest("需要 pyrefly 才能覆盖项目级类型扫描")
+        repo = self.make_repo(
+            {
+                "a.py": "def f(x: int) -> int:\n    return x\n",
+                "caller.py": "from a import f\n\n\ny: int = f('oops')\n",
+            }
+        )
+        subprocess.run(  # noqa: S603
+            [GIT, "add", "-A"], cwd=str(repo), capture_output=True, check=True
+        )
+        subprocess.run(  # noqa: S603
+            [GIT, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "i"],
+            cwd=str(repo),
+            capture_output=True,
+            check=True,
+        )
+        (repo / "a.py").write_text(
+            "def f(x: int) -> int:\n    return x\n# tweaked\n", encoding="utf-8"
+        )
+        _, default_out = self.run_cli(VERIFY, repo, "--level", "L3")
+        self.assertNotIn("caller.py", default_out, "默认模式不应检查未改动的 caller.py")
+        # 退出码不作判据：本机缺 ty 时 L3 恒退 1（降级），只看输出里是否扫出 caller.py
+        scoped_code, scoped_out = self.run_cli(
+            VERIFY, repo, "--level", "L3", "--project-scope"
+        )
+        self.assertIn("caller.py", scoped_out, "项目级扫描应扫出 caller.py 的类型错误")
+        self.assertEqual(scoped_code, 1)
+
+    def test_project_ruff_config_takes_precedence(self) -> None:
+        """项目自带 ruff 配置时不传兜底参数：项目行宽 200 要盖过脚本默认的 120。"""
+        repo = self.make_repo(
+            {
+                "app.py": 'message = "' + "a" * 140 + '"\n',
+                "ruff.toml": "line-length = 200\n",
+            }
+        )
+        code, out = self.run_cli(VERIFY, repo, "--level", "L1")
+        self.assertEqual(code, 0, out)
+        (repo / "ruff.toml").unlink()
+        code, out = self.run_cli(VERIFY, repo, "--level", "L1")
+        self.assertEqual(code, 1, "无项目配置时应回落兜底行宽 120 并报 E501")
+        self.assertIn("E501", out)
+
+    def test_shellcheck_runs_when_available(self) -> None:
+        """有 .sh 改动且本机装了 shellcheck 时加跑静态检查：未引号变量要被抓到。"""
+        if not shutil.which("shellcheck"):
+            self.skipTest("本机未安装 shellcheck")
+        repo = self.make_repo({"run.sh": "#!/usr/bin/env bash\nrm -rf $1\n"})
+        code, out = self.run_cli(VERIFY, repo, "--level", "L1")
+        self.assertEqual(code, 1)
+        self.assertIn("shellcheck", out)
+
     def test_missing_type_checker_never_reports_full_pass(self) -> None:
         """类型检查器缺失时降级，但绝不能报「全部通过」。"""
         if shutil.which("ty"):

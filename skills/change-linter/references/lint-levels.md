@@ -1,6 +1,6 @@
 # 分级校验命令与工具
 
-本文件是 L1–L4 分级规范与工具命令的落点（从 `AGENTS.md` 搬来），外加 `verify.py` 的用法。**级别由模型判定**，脚本只按传入级别执行。
+本文件是 L1–L4 分级规范与工具命令的落点，外加 `verify.py` 的用法。**级别由模型判定**，脚本只按传入级别执行。
 
 ## 分级与命令
 
@@ -15,7 +15,7 @@
 
 1. 取最高适用 Level，场景不命中方可跳过
 2. 判定后打印 `后置校验 L<N>`，并行运行全部适用命令，汇总结果
-3. 工具缺失输出 `<tool>: not found, skipped`，不阻塞
+3. 工具缺失按下方「缺失工具策略」处理：`ruff` 硬失败，类型检查器降级并显式标注，均不得视为通过
 
 ```bash
 # FILES 由脚本自动发现，或用 --files 显式传入
@@ -51,14 +51,18 @@ uv tool install pyrefly --upgrade
 
 ```bash
 # Bash 的 cwd 必须是你的项目目录（改动发现依赖它）
-SKILL_DIR="${ZCODE_SKILL_DIR}"   # 未展开时改用 ${CLAUDE_SKILL_DIR} 或本技能 base directory
+SKILL_DIR="${ZCODE_SKILL_DIR:-${CLAUDE_SKILL_DIR}}"   # ZCode 展开 ZCODE_、Claude Code 展开 CLAUDE_；都未展开时直接填本技能 base directory
 
 uv run --no-project "$SKILL_DIR/scripts/verify.py" --level L2                    # 自动发现改动的 .py/.sh
 uv run --no-project "$SKILL_DIR/scripts/verify.py" --level L1 --files a.py       # 显式指定文件
+uv run --no-project "$SKILL_DIR/scripts/verify.py" --level L3 --project-scope    # 公共接口变更：类型工具扫整个项目
 uv run --no-project "$SKILL_DIR/scripts/verify.py" --probe                       # 只打印工具清单
 uv run --no-project "$SKILL_DIR/scripts/verify.py" --level L3 --fast             # 使用项目缓存换速度
 uv run --no-project "$SKILL_DIR/scripts/verify.py" --level L2 --install-missing  # 经用户同意后安装缺失工具
 ```
+
+- **`--project-scope`**：类型工具（ty/pyrefly/pyright/mypy）的检查对象从改动文件扩大到整个项目目录，ruff 与 `bash -n` 仍只查改动文件。用于 L3/L4 公共接口 / 跨模块变更——单文件检查抓不到「改签名破坏下游调用方」；会连带扫出项目存量类型错误，汇报时须区分存量与本次引入。
+- **ruff 兜底参数**：`--select/--ignore/--line-length` 仅在项目未自带 ruff 配置时传入；项目根有 `pyproject.toml`（含 `[tool.ruff]`）或 `ruff.toml` 时自动以项目配置为准，脚本会显式打印这一让位。
 
 `uv` 自带 Python，因此不依赖系统上有没有 `python`，**也不需要为不同系统各写一个启动器**。只有 uv 不可用时才退回系统解释器：Windows 优先 `py -3`（`python` 常是 Microsoft Store 占位程序，存在 ≠ 可用），其他系统用 `python3`。
 
@@ -66,7 +70,7 @@ uv run --no-project "$SKILL_DIR/scripts/verify.py" --level L2 --install-missing 
 
 - **改动文件发现**：`git status --porcelain` ∪ `git diff --name-only HEAD`，过滤 `.py` / `.sh`。
 - **缓存隔离**：默认给带缓存的工具使用**按进程隔离的临时缓存目录**，避免多处并发调用互相污染；`--fast` 改用项目缓存换取增量速度。
-- **退出码**：`0` 通过；`1` 失败（任何校验命令失败，或 `ruff` 缺失）。
+- **退出码**：`0` 通过（含改动仅为删除文件、无适用校验对象的空跑）；`1` 失败（任何校验命令失败、`ruff` 缺失或无适用改动）。
 
 ## 缺失工具策略
 
@@ -76,3 +80,4 @@ uv run --no-project "$SKILL_DIR/scripts/verify.py" --level L2 --install-missing 
 | `ty` / `pyrefly` / `pyright` / `mypy` | 该级降级执行，显式打印「该级未真正校验」 |
 | `uv` | 报告「缺少 uv，无法安装校验工具链」，不尝试安装 |
 | `bash`（存在 `.sh` 改动时） | 该文件跳过 `bash -n` 并显式标注 |
+| `shellcheck`（可选增强） | 存在则对 `.sh` 加跑静态检查（发现即判失败）；缺失仅提示，不影响通过与否，也不自动安装。补装方式：`uv tool install shellcheck-py`（PyPI 再打包，自带官方二进制，装完可执行名是 `shellcheck`） |

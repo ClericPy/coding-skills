@@ -7,7 +7,7 @@
 并行执行、汇总结果与退出码。
 
 退出码：
-    0  该 Level 的全部校验都真实执行且通过
+    0  该 Level 的全部校验都真实执行且通过；或改动仅为删除文件（无适用校验对象）
     1  存在校验失败，或存在未真正执行的校验（缺工具 / 无适用改动）
 """
 
@@ -55,6 +55,7 @@ PROBE_TOOLS: tuple[str, ...] = (
     "pyright",
     "mypy",
     SHELL_TOOL,
+    "shellcheck",
     UV,
     GIT,
 )
@@ -67,10 +68,18 @@ DEGRADABLE_TOOLS: frozenset[str] = frozenset(
     {"ty", "pyrefly", "pyright", "mypy", SHELL_TOOL}
 )
 
-# ruff 参数与 install_tools.md 保持一致
+# 不能经 uv tool install 安装的工具（bash 由系统提供，缺失时只能提示用户自装）
+NON_UV_TOOLS: frozenset[str] = frozenset({SHELL_TOOL})
+
+# ruff 缺省兜底参数：仅当被测项目未自带 ruff 配置时才传给 ruff，
+# 项目自带配置（pyproject.toml 的 [tool.ruff] / ruff.toml）时以项目为准
 RUFF_SELECT = "E,F,W,I,S,PERF"
 RUFF_IGNORE = "W291,W293,E203"
 RUFF_LINE_LENGTH = "120"
+
+RUFF_CONFIG_NAMES: tuple[str, ...] = ("ruff.toml", ".ruff.toml")
+PYPROJECT_NAME = "pyproject.toml"
+RUFF_SECTION_MARK = "[tool.ruff"
 
 CHECK_TIMEOUT_SECONDS = 900
 MAX_WORKERS = 8
@@ -154,8 +163,12 @@ def _probe(tools: tuple[str, ...]) -> dict[str, str | None]:
 
 
 def _git_lines(git_exe: str, argv: tuple[str, ...], cwd: Path) -> list[str]:
-    """取 git 命令的 stdout 行；git 报错时返回空列表。"""
-    result = _run((git_exe, *argv), cwd)
+    """取 git 命令的 stdout 行；git 报错时返回空列表。
+
+    core.quotepath=false 让非 ASCII 路径按原文输出，否则会被转义成八进制，
+    后续按转义串找文件必然落空。
+    """
+    result = _run((git_exe, "-c", "core.quotepath=false", *argv), cwd)
     if result.code != 0:
         return []
     return [line for line in result.stdout.splitlines() if line.strip()]
@@ -181,22 +194,28 @@ def _classify(paths: list[Path]) -> tuple[list[str], list[str]]:
     return py_files, sh_files
 
 
-def discover_changed_files(root: Path, git_exe: str) -> tuple[list[str], list[str]]:
-    """发现本次改动的 (python, shell) 文件；非 git 仓库或发现失败时返回空。
+def discover_changed_files(
+    root: Path, git_exe: str
+) -> tuple[list[str], list[str], int]:
+    """发现本次改动的 (python, shell) 文件与被跳过的删除文件数；非 git 仓库返回空。
 
     `--untracked-files=all` 不可省略：默认模式下 git 对未跟踪目录只输出目录本身，
     新文件会被整体漏检。
     """
     top_level = _git_lines(git_exe, ("rev-parse", "--show-toplevel"), root)
     if not top_level:
-        return [], []
+        return [], [], 0
     repo = Path(top_level[0])
     tracked = _git_lines(git_exe, ("diff", "--name-only", "HEAD"), repo)
     staged = _parse_porcelain(
         _git_lines(git_exe, ("status", "--porcelain", "--untracked-files=all"), repo)
     )
     unique = sorted({*tracked, *staged})
-    return _classify([repo / rel for rel in unique])
+    # 删除是合法改动：自动发现只送检仍存在的文件，避免对已删路径误报；
+    # --files 显式指定不受此过滤影响，保持响亮失败。
+    existing = [rel for rel in unique if (repo / rel).exists()]
+    py_files, sh_files = _classify([repo / rel for rel in existing])
+    return py_files, sh_files, len(unique) - len(existing)
 
 
 def _explicit_files(root: Path, names: list[str]) -> tuple[list[str], list[str]]:
@@ -249,23 +268,25 @@ def _make_py_compile_check(py_files: list[str], temp_root: Path) -> Check:
     )
 
 
-def _build_checks(
-    level: str,
-    py_files: list[str],
-    sh_files: list[str],
-    exe: dict[str, str | None],
-    temp_root: Path,
-    fast: bool,
+def _has_project_ruff_config(cwd: Path) -> bool:
+    """被测项目自带 ruff 配置时返回 True；此时不传兜底参数，让 ruff 读项目自己的规则。"""
+    if any((cwd / name).is_file() for name in RUFF_CONFIG_NAMES):
+        return True
+    pyproject = cwd / PYPROJECT_NAME
+    return pyproject.is_file() and RUFF_SECTION_MARK in pyproject.read_text(
+        encoding="utf-8", errors="replace"
+    )
+
+
+def _build_ruff_checks(
+    ruff: str, py_files: list[str], fast: bool, respect_config: bool
 ) -> list[Check]:
-    """按级别与实际可用工具构造校验命令清单；不可用的工具自然缺席。"""
-    checks: list[Check] = []
-    wanted = set(LEVEL_TOOLS[level])
-    ruff = exe.get("ruff")
-    if py_files and ruff:
-        # 默认隔离：ruff 用 --no-cache（它默认会往 CWD 写 .ruff_cache），mypy 用临时 cache-dir
-        ruff_nocache = () if fast else ("--no-cache",)
-        select = (
-            "check",
+    """ruff check + format --check；respect_config 时不传兜底参数，以项目配置为准。"""
+    # 默认隔离：ruff 用 --no-cache（它默认会往 CWD 写 .ruff_cache）
+    ruff_nocache = () if fast else ("--no-cache",)
+    check_args: tuple[str, ...] = ("check",)
+    if not respect_config:
+        check_args += (
             "--select",
             RUFF_SELECT,
             "--ignore",
@@ -273,30 +294,86 @@ def _build_checks(
             "--line-length",
             RUFF_LINE_LENGTH,
         )
-        checks.append(_make_check("ruff", ruff, (*select, *ruff_nocache, *py_files)))
+    return [
+        _make_check("ruff", ruff, (*check_args, *ruff_nocache, *py_files)),
+        _make_check("ruff", ruff, ("format", "--check", *ruff_nocache, *py_files)),
+    ]
+
+
+def _build_type_checks(
+    level: str,
+    py_files: list[str],
+    exe: dict[str, str | None],
+    temp_root: Path,
+    fast: bool,
+    cwd: Path,
+    project_scope: bool,
+) -> list[Check]:
+    """该级别要求的类型检查器；--project-scope 时扫整个项目，否则只扫改动文件。
+
+    --project-scope 抓「改公共签名破坏下游调用方」这类单文件检查必然漏报的问题；
+    ruff 与 bash 仍只查改动文件，避免存量风格噪音。
+    """
+    wanted = set(LEVEL_TOOLS[level])
+    type_target: tuple[str, ...] = (str(cwd),) if project_scope else tuple(py_files)
+    checks: list[Check] = []
+    for tool, command in (
+        ("ty", ("check",)),
+        ("pyrefly", ("check",)),
+        ("pyright", ()),
+    ):
+        if tool in wanted and exe.get(tool):
+            checks.append(_make_check(tool, str(exe[tool]), (*command, *type_target)))
+    if "mypy" in wanted and exe.get("mypy"):
+        # 默认隔离：mypy 用临时 cache-dir，避免写项目
+        mypy_cache = () if fast else ("--cache-dir", str(temp_root / "mypy"))
         checks.append(
-            _make_check("ruff", ruff, ("format", "--check", *ruff_nocache, *py_files))
-        )
-        for tool, command in (
-            ("ty", ("check",)),
-            ("pyrefly", ("check",)),
-            ("pyright", ()),
-        ):
-            if tool in wanted and exe.get(tool):
-                checks.append(_make_check(tool, str(exe[tool]), (*command, *py_files)))
-        if "mypy" in wanted and exe.get("mypy"):
-            mypy_cache = () if fast else ("--cache-dir", str(temp_root / "mypy"))
-            checks.append(
-                _make_check(
-                    "mypy", str(exe["mypy"]), ("--strict", *mypy_cache, *py_files)
-                )
+            _make_check(
+                "mypy", str(exe["mypy"]), ("--strict", *mypy_cache, *type_target)
             )
+        )
+    return checks
+
+
+def _build_shell_checks(sh_files: list[str]) -> list[Check]:
+    """bash -n 语法检查；shellcheck 存在则加跑（可选增强，缺失不影响判定）。"""
+    if not sh_files:
+        return []
+    checks: list[Check] = []
+    shell = _tool_path(SHELL_TOOL)
+    if shell:
+        checks.append(_make_check(SHELL_TOOL, shell, ("-n", *sh_files)))
+        shellcheck = _tool_path("shellcheck")
+        if shellcheck:
+            checks.append(_make_check("shellcheck", shellcheck, (*sh_files,)))
+    return checks
+
+
+def _build_checks(
+    level: str,
+    py_files: list[str],
+    sh_files: list[str],
+    exe: dict[str, str | None],
+    temp_root: Path,
+    fast: bool,
+    cwd: Path,
+    project_scope: bool = False,
+    respect_ruff_config: bool = False,
+) -> list[Check]:
+    """按级别与实际可用工具构造校验命令清单；不可用的工具自然缺席。"""
+    checks: list[Check] = []
+    ruff = exe.get("ruff")
+    if py_files and ruff:
+        checks.extend(_build_ruff_checks(ruff, py_files, fast, respect_ruff_config))
+        checks.extend(
+            _build_type_checks(
+                level, py_files, exe, temp_root, fast, cwd, project_scope
+            )
+        )
     elif py_files:
         # 有 .py 改动却没有 ruff：用解释器自带的 py_compile 保住语法底线
         checks.append(_make_py_compile_check(py_files, temp_root))
-    shell = exe.get(SHELL_TOOL)
-    if sh_files and shell:
-        checks.append(_make_check(SHELL_TOOL, shell, ("-n", *sh_files)))
+    checks.extend(_build_shell_checks(sh_files))
     return checks
 
 
@@ -351,11 +428,16 @@ def _report(
         if not outcome.passed:
             _print_outcome(outcome)
     missing = [*hard, *degraded]
-    if missing:
+    uv_missing = [tool for tool in missing if tool not in NON_UV_TOOLS]
+    if uv_missing:
         hint = ", ".join(
-            f"{tool} → uv tool install {tool} --upgrade" for tool in missing
+            f"{tool} → uv tool install {tool} --upgrade" for tool in uv_missing
         )
         print(f"缺失工具: {hint}")
+    if SHELL_TOOL in missing:
+        print(
+            f"缺失工具: {SHELL_TOOL} → 需自行安装 bash（Git Bash / WSL 等），uv 无法代装"
+        )
 
     failed = [item for item in outcomes if not item.passed]
     if not outcomes:
@@ -390,6 +472,11 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument(
         "--fast", action="store_true", help="使用项目缓存换取增量速度（默认隔离缓存）"
     )
+    parser.add_argument(
+        "--project-scope",
+        action="store_true",
+        help="类型工具改扫整个项目目录（L3/L4 公共接口变更时用，防漏报下游调用方）",
+    )
     parser.add_argument("--probe", action="store_true", help="只打印工具清单后退出")
     parser.add_argument(
         "--install-missing", action="store_true", help="经用户同意后安装缺失工具"
@@ -402,12 +489,13 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
 
 def _collect_files(
     args: argparse.Namespace, cwd: Path, git_exe: str | None
-) -> tuple[list[str], list[str]]:
-    """按优先级收集待校验文件：--files 优先，否则从 git 发现。"""
+) -> tuple[list[str], list[str], int]:
+    """按优先级收集待校验文件：--files 优先，否则从 git 发现；附带跳过的删除数。"""
     if args.files:
-        return _explicit_files(cwd, args.files)
+        py_files, sh_files = _explicit_files(cwd, args.files)
+        return py_files, sh_files, 0
     if git_exe is None:
-        return [], []
+        return [], [], 0
     return discover_changed_files(cwd, git_exe)
 
 
@@ -416,14 +504,16 @@ def _resolve_missing(
 ) -> dict[str, str | None]:
     """探测工具；在获授权时尝试用 uv 补齐，返回最终探测结果。"""
     exe = _probe(tuple(tools))
-    missing = [tool for tool in tools if exe[tool] is None]
-    if not missing or not install_missing:
+    installable = [
+        tool for tool in tools if exe[tool] is None and tool not in NON_UV_TOOLS
+    ]
+    if not installable or not install_missing:
         return exe
     uv_exe = _tool_path(UV)
     if uv_exe is None:
         print("缺少 uv，无法安装校验工具链；请自行安装 uv 后重试")
         return exe
-    _install_missing(missing, cwd, uv_exe)
+    _install_missing(installable, cwd, uv_exe)
     return _probe(tuple(tools))
 
 
@@ -431,6 +521,71 @@ def _force_utf8_stdout() -> None:
     """在 Windows 控制台强制 UTF-8 输出，避免非 ASCII 标记触发编码错误。"""
     if isinstance(sys.stdout, io.TextIOWrapper):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
+
+def _handle_empty_changes(
+    args: argparse.Namespace, py_files: list[str], sh_files: list[str], skipped: int
+) -> int | None:
+    """无适用文件时的裁决：打印结论并返回退出码；仍有适用文件时返回 None。"""
+    if py_files or sh_files:
+        return None
+    if skipped:
+        # 改动仅为删除：本就没有静态校验对象，不是校验缺口，不算失败
+        print("改动均为删除文件，无静态校验对象")
+        print("verify: 通过 (无适用校验对象)")
+        return 0
+    if args.files:
+        print(f"--files 传入的 {len(args.files)} 个路径中不含 .py / .sh 文件")
+    else:
+        print("未发现改动的 .py / .sh 文件（若改动已提交，请用 --files 显式指定）")
+    print("verify: 未校验 — 不得视为已通过")
+    return 1
+
+
+def _print_mode_notes(
+    args: argparse.Namespace, py_files: list[str], sh_files: list[str], cwd: Path
+) -> bool:
+    """打印本次运行的开关状态；返回是否启用项目自带 ruff 配置。"""
+    if args.project_scope:
+        print("类型工具按项目级扫描（--project-scope）：可能连带暴露项目存量类型错误")
+    if sh_files and _tool_path("shellcheck") is None:
+        print(
+            "可选增强: shellcheck 未安装，shell 校验仅 bash -n（不影响判定，可自行安装后重跑）"
+        )
+    respect_ruff_config = bool(py_files and _has_project_ruff_config(cwd))
+    if respect_ruff_config:
+        print(
+            "检测到项目自带 ruff 配置（pyproject.toml / ruff.toml），不使用脚本兜底参数"
+        )
+    return respect_ruff_config
+
+
+def _execute_checks(
+    args: argparse.Namespace,
+    py_files: list[str],
+    sh_files: list[str],
+    exe: dict[str, str | None],
+    cwd: Path,
+    respect_ruff_config: bool,
+) -> list[CheckOutcome]:
+    """构造并并行执行全部校验命令；临时缓存目录用完即清。"""
+    temp_root = Path(tempfile.mkdtemp(prefix="change-linter-"))
+    try:
+        checks = _build_checks(
+            args.level,
+            py_files,
+            sh_files,
+            exe,
+            temp_root,
+            args.fast,
+            cwd,
+            args.project_scope,
+            respect_ruff_config,
+        )
+        with ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
+            return list(pool.map(partial(_execute, cwd=cwd), checks))
+    finally:
+        shutil.rmtree(temp_root, ignore_errors=True)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -443,7 +598,7 @@ def main(argv: list[str] | None = None) -> int:
         _print_probe(_probe(PROBE_TOOLS))
         return 0
 
-    py_files, sh_files = _collect_files(args, cwd, _tool_path(GIT))
+    py_files, sh_files, skipped = _collect_files(args, cwd, _tool_path(GIT))
     if not args.files:
         py_files, removed_py = _drop_own_files(py_files)
         sh_files, removed_sh = _drop_own_files(sh_files)
@@ -451,31 +606,19 @@ def main(argv: list[str] | None = None) -> int:
             print(
                 f"已排除本技能自身文件 {removed_py + removed_sh} 个（确需检查请用 --files 显式指定）"
             )
-    if not py_files and not sh_files:
-        if args.files:
-            print(f"--files 传入的 {len(args.files)} 个路径中不含 .py / .sh 文件")
-        else:
-            print("未发现改动的 .py / .sh 文件（若改动已提交，请用 --files 显式指定）")
-        print("verify: 未校验 — 不得视为已通过")
-        return 1
+    if skipped:
+        print(f"已跳过已删除文件 {skipped} 个（删除属合法改动，无需送检）")
+    empty_verdict = _handle_empty_changes(args, py_files, sh_files, skipped)
+    if empty_verdict is not None:
+        return empty_verdict
 
+    respect_ruff_config = _print_mode_notes(args, py_files, sh_files, cwd)
     needed = _needed_tools(args.level, bool(py_files), bool(sh_files))
     exe = _resolve_missing(needed, cwd, args.install_missing)
     missing = [tool for tool in needed if exe[tool] is None]
     hard = [tool for tool in missing if tool in REQUIRED_TOOLS]
     degraded = [tool for tool in missing if tool in DEGRADABLE_TOOLS]
-
-    temp_root = Path(tempfile.mkdtemp(prefix="change-linter-"))
-    outcomes: list[CheckOutcome] = []
-    try:
-        checks = _build_checks(
-            args.level, py_files, sh_files, exe, temp_root, args.fast
-        )
-        with ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
-            outcomes = list(pool.map(partial(_execute, cwd=cwd), checks))
-    finally:
-        shutil.rmtree(temp_root, ignore_errors=True)
-
+    outcomes = _execute_checks(args, py_files, sh_files, exe, cwd, respect_ruff_config)
     return 0 if _report(args.level, outcomes, degraded, hard) else 1
 
 
