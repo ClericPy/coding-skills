@@ -4,6 +4,21 @@
 
 [![skills.sh](https://skills.sh/b/ClericPy/coding-skills)](https://skills.sh/ClericPy/coding-skills)
 
+## English
+
+A personal coding-workflow skill collection for ZCode / Claude Code and any tool that reads the Agent Skills format, distributed via `npx skills add`. Requires Node.js with `npx` available.
+
+```bash
+npx skills add ClericPy/coding-skills --list                              # preview only
+npx skills add ClericPy/coding-skills -g -a zcode -y                      # install all (user scope)
+npx skills add ClericPy/coding-skills -a zcode -y                         # install into the current repo
+npx skills add ClericPy/coding-skills -a zcode --skill change-linter -y   # install a single skill
+```
+
+Skills: **ccccc** (normalized git commits) · **ppppp** (prompt modulator, 10 templates) · **ttttt** (tmux terminal co-pilot) · **wwwww** (openspec change flow) · **yyyyy** (change acceptance & archive) · **code-review-expert** (senior-level code review) · **change-linter** (L1–L4 post-edit checks, auto-triggered)
+
+Details in the Chinese sections below.
+
 ## Quickstart
 
 ```bash
@@ -32,13 +47,19 @@ npx skills add ClericPy/coding-skills -a zcode --skill change-linter -y
 | --- | --- | --- | --- |
 | [**ccccc**](./skills/ccccc/SKILL.md) | 按公司严格规范生成并创建 Git 提交：复用已有 ID 字段、描述 ≤200 字不换行、单次新增 ≤500 行、绝不 push | `/ccccc` | 仅手动 |
 | [**ppppp**](./skills/ppppp/SKILL.md) | 提示词调制器：按场景判定表匹配 10 个模板并填充占位符，只输出调制后的提示词，不回答原问题 | `/ppppp` | 仅手动 |
-| [**ttttt**](./skills/ttttt/SKILL.md) | 接管 tmux 会话执行终端操作：「看-想-做」闭环，含 base64 防转义通道与破坏性命令确认 | `/ttttt` | 仅手动 |
+| [**ttttt**](./skills/ttttt/SKILL.md) | ⚠️ 接管 tmux 会话执行终端操作：「看-想-做」闭环，含 base64 防转义通道与破坏性命令确认 | `/ttttt` | 仅手动 |
 | [**wwwww**](./skills/wwwww/SKILL.md) | 执行 openspec change 全流程：Worktree 隔离 → 实现自测 → 验收 → 存档 → 提交 → rebase + merge --ff-only 合并 | `/wwwww` | 仅手动 |
 | [**yyyyy**](./skills/yyyyy/SKILL.md) | 验收进行中的变更（spec 变更或 openspec change，自动判断）：文档代码对齐、测试全过，通过后存档清理 | `/yyyyy` | 仅手动 |
 | [**code-review-expert**](./skills/code-review-expert/SKILL.md) | 资深架构师级 Code Review 与 Spec 验收：四维度审查，仅报 ≥80% 置信度问题并分 Blocker/Major/Minor 三档 | `/code-review-expert` | 仅手动 |
 | [**change-linter**](./skills/change-linter/SKILL.md) | 改动 Python / Shell 后判定并执行 L1–L4 分级后置校验，并如实报告工具缺失导致的未校验缺口 | `/change-linter` | 可自动触发 |
 
 **仅手动** = 只能由你在 `/` 菜单里主动调用；**可自动触发** = 模型也会在合适时机自己调用（同时仍可手动调用）。
+
+> ⚠️ **ttttt** 能向真实终端发键、经 ssh 操作远程机器：破坏性命令必须先经你确认，密码类交互有专门约束（绝不拼进命令行、拒绝 `sudo -S`），详见其 SKILL.md 的「安全防线」。
+
+## 采用同款全局规范（可选）
+
+[`templates/AGENTS.md`](./templates/AGENTS.md) 是作者的全局工程规范示例（含与 `change-linter` 技能的联动写法）。想要同款：把它复制到 `~/.zcode/AGENTS.md`（或项目根 `AGENTS.md`），再按项目裁剪；**已有配置时先对比合并，不要直接覆盖**——全局规范是每个人自己的东西，技能不会也不会替你装它。
 
 ## 依赖工具
 
@@ -50,6 +71,7 @@ uv tool install ty --upgrade
 uv tool install mypy --upgrade
 uv tool install pyright --upgrade
 uv tool install pyrefly --upgrade
+uv tool install shellcheck-py   # 可选：.sh 静态检查增强（shellcheck 官方二进制的 PyPI 再打包）
 ```
 
 若连 `uv` 自身都没有，需要先自行安装 uv，否则无法补齐工具链。其余 6 个技能不依赖这些工具。

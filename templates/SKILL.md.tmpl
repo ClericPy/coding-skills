@@ -29,8 +29,8 @@ description: "<这个技能做什么、什么时候该用它>"
 调用脚本**必须用绝对路径**（Bash 的 cwd 是用户项目目录，不是技能目录），指令里禁止写 `python scripts/<name>.py` 这种相对路径：
 
 ```bash
-SKILL_DIR="${ZCODE_SKILL_DIR}"   # 未展开时改用 ${CLAUDE_SKILL_DIR} 或本技能 base directory 的绝对路径
-python "$SKILL_DIR/scripts/<name>.py" --help
+SKILL_DIR="${ZCODE_SKILL_DIR:-${CLAUDE_SKILL_DIR}}"   # ZCode 展开 ZCODE_、Claude Code 展开 CLAUDE_；都未展开时直接填本技能 base directory 的绝对路径
+uv run --no-project "$SKILL_DIR/scripts/<name>.py" --help
 ```
 
-优先用 `uv run --no-project "$SKILL_DIR/scripts/<name>.py"` 调用：uv 自带 Python，一条命令跨全平台，也不必为不同系统各写启动器。
+`uv run --no-project` 自带 Python，一条命令跨全平台，不必为不同系统各写启动器；uv 不可用时才退回系统解释器（Windows 用 `py -3`，其他系统用 `python3`）。
