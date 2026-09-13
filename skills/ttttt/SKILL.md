@@ -1,7 +1,9 @@
 ---
 name: ttttt
-description: "接管 tmux 会话执行终端操作（需提供会话名，可指定远程机器地址）：「看-想-做」闭环，含 base64 防转义通道、破坏性命令执行前必先确认"
+description: "接管 tmux 会话执行终端操作（需提供会话名，可指定远程机器地址）：「看-想-做」闭环，含 base64 防转义通道、破坏性命令执行前必先确认。仅限用户手动调用（manual-only; invoke only when the user explicitly asks）"
 disable-model-invocation: true
+argument-hint: "<tmux会话名> [user@host]"
+compatibility: "Requires tmux, ssh, base64, scp and a Unix-like shell; destructive commands require explicit user confirmation"
 ---
 
 # Role: Tmux Terminal Co-Pilot
@@ -15,8 +17,8 @@ disable-model-invocation: true
 进入终端任务前，先根据用户提示词解析两个变量：
 
 ```bash
-# 来自用户提示词：tmux 会话名（必填），如 your-session-name
-session_name="your-session-name"
+# 来自用户提示词：tmux 会话名（必填），以用户实际提供的为准，绝不默认任何具体会话名
+session_name="<用户提供的会话名>"
 # 来自用户提示词：目标机器地址（可选），如 user@host；缺省表示本机 tmux
 machine=""
 ```
@@ -74,19 +76,22 @@ machine=""
    ```
    
    *注意：解码假设目标机为 GNU `base64 -d`；BSD/macOS 需 `base64 -D`。*
+
+   *发键纪律：无论走哪种通道，待执行命令的**完整明文必须先出现在回复里**（base64 在对话里是密文、不可审计），然后才发键执行；破坏性命令（见「安全防线」）必须**等用户明确确认后**才允许 send-keys——确认在先、发键在后，顺序不可颠倒。*
    
    超长脚本 / 需 source 到当前 shell / 目标机缺 base64 时，用 **scp 临时文件**：
    
    ```bash
    # 1) 经 base64 落盘生成本地脚本（内容任意免转义）
    cmd_b64=$(printf '%s' '整段脚本内容' | base64 | tr -d '\n')
-   printf '%s\n' "$cmd_b64" | base64 -d > /tmp/tmux_cmd.sh
+   tmp_script=$(mktemp /tmp/tmux_cmd.XXXXXX.sh)
+   printf '%s\n' "$cmd_b64" | base64 -d > "$tmp_script"
    
-   # 2) 远程会话时先上传，本机会话跳过 scp
-   scp /tmp/tmux_cmd.sh "$machine:/tmp/tmux_cmd.sh"
+   # 2) 仅远程会话上传（$machine 非空才执行；本机会话跳过这一步）
+   [ -n "$machine" ] && scp "$tmp_script" "$machine:$tmp_script"
    
    # 3) 执行后立即清理，防残留
-   tmux send-keys -t "$session_name" "bash /tmp/tmux_cmd.sh; rm -f /tmp/tmux_cmd.sh" Enter
+   tmux send-keys -t "$session_name" "bash $tmp_script; rm -f $tmp_script" Enter
    ```
 
 3. **安全按键 (Send Key Strokes)**
@@ -129,6 +134,6 @@ capture-pane / send-keys / ssh 等工具调用的命令与原始输出会自动�
 ## ⚠️ 安全防线 (Safety Guardrails)
 
 1. **拒绝盲打**：在运行任何改动破坏性较强的命令（如 `rm -rf`、`git reset --hard`、`dd`、`reboot`）前，必须先生成文字，**明确提示用户并在回复中要求确认**。
-2. **高危阻断**：严禁自动向包含 `sudo` 密码输入的交互界面静默发送密码。
+2. **高危阻断**：严禁自动向包含 `sudo` 密码输入的交互界面静默发送密码；密码绝不作为参数拼进 send-keys 命令（会留在 shell 历史与 tmux 日志里），`sudo -S` 类传密方式一律拒绝，交回用户在终端亲手输入。
 3. **会话存在性**：操作前先执行 `tmux ls` 确认 `$session_name` 会话存在；不存在时提示用户，不得擅自新建。
 4. **远程边界**：`$machine` 为远程机器时，所有 tmux 操作必须通过 `ssh "$machine" ...` 执行，避免在本地误操作。
