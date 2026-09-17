@@ -12,7 +12,8 @@ coding-skills/
 │   └── scripts/               可选：技能调用的辅助脚本
 ├── templates/                 骨架与示例，不参与技能发现
 │   ├── SKILL.md.tmpl          新技能起点
-│   └── AGENTS.md              AGENTS.md 成稿（可整份采用）
+│   ├── AGENTS.md              AGENTS.md 成稿（可整份采用）
+│   └── install-prompt.md      批量安装技能与工具链的提示词（整段粘贴给 agent）
 ├── scripts/validate.py        仓库自检
 ├── tests/                     回归测试（不随技能分发）
 │   ├── test_verify.py         脚本行为
@@ -64,7 +65,7 @@ coding-skills/
 4. 在 `README.md` 技能表里加一行，**链接必须是 `[name](./skills/<name>/SKILL.md)`** 这个形式——自检靠它核对索引。
 5. 跑 `uv run --no-project scripts/validate.py`，必须通过。
 6. 若改动了 `.py` / `.sh`，调用 `change-linter` 技能完成分级校验。
-7. 在 `CHANGELOG.md` 顶部「未发布」段落补一条本次变更（提交时并入当日日期段落）。
+7. 在 `CHANGELOG.md` 顶部「未发布」段落补一条本次变更（提交时并入当日日期段落）。条目格式：`## YYYY-MM-DD` 日期段 + `- **HH:MM** \`前缀:\` 摘要`，同日多条按时间倒序，前缀与提交信息保持一致。
 
 ## 自检与测试
 

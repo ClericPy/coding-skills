@@ -4,6 +4,8 @@
 
 [![skills.sh](https://skills.sh/b/ClericPy/coding-skills)](https://skills.sh/ClericPy/coding-skills)
 
+> 徽章指向 skills.sh 的技能目录页：收录由 CLI 的安装遥测触发（有人 `npx skills add` 过才会建索引），收录前页面显示 404，属正常现象，不影响仓库与本地安装。
+
 ## English
 
 A personal coding-workflow skill collection for ZCode / Claude Code and any tool that reads the Agent Skills format, distributed via `npx skills add`. Requires Node.js with `npx` available.
@@ -17,7 +19,7 @@ npx skills add ClericPy/coding-skills -a zcode --skill change-linter -y   # inst
 
 Skills: **ccccc** (normalized git commits) · **ppppp** (prompt modulator, 10 templates) · **ttttt** (tmux terminal co-pilot) · **wwwww** (openspec change flow) · **yyyyy** (change acceptance & archive) · **code-review-expert** (senior-level code review) · **change-linter** (L1–L4 post-edit checks, auto-triggered)
 
-Details in the Chinese sections below.
+Details in the Chinese sections below. Installed copies are snapshots: refresh them with `npx skills update -g -y` (or re-run `add`), remove with `npx skills remove <name>`.
 
 ## Quickstart
 
@@ -39,7 +41,7 @@ npx skills add ClericPy/coding-skills -a zcode --skill change-linter -y
 
 > **别用 `--all`。** 实测它会把技能散进多个 agent 目录（本机出现 `.agents/skills/` 与 `agent/skills/` **两份完整真实副本**，其余目录放符号链接），而且具体落点取决于本机检测到了哪些 agent，不稳定。要可预测就显式指定 `-a <agent>`。
 >
-> **多 agent 安装（`-a a -a b`）会保留一份真实副本在 `.agents/skills/`，其他目录用符号链接指向它** —— Windows 上创建符号链接需要开发者模式，否则安装会失败。只装一个 agent 时是纯拷贝，无此问题。
+> **安装落点**（实测两种布局，取决于装法）：① 命令式 `-g -a <agent>`——技能直接落进该 agent 的目录，ZCode 即 `~/.zcode/skills/<name>/`（本机实测此路径下生成技能目录，且不出现 `~/.agents/skills/`）；② 交互式安装或多 agent——实体统一放通用目录 `~/.agents/skills/<name>/`，各 agent 目录里放链接指向它（Windows 上是 **JUNCTION**，无需开发者模式）。两种布局装的都是**快照**，不跟随源仓库更新，见下方「更新与卸载」。
 
 ## 技能
 
@@ -56,6 +58,24 @@ npx skills add ClericPy/coding-skills -a zcode --skill change-linter -y
 **仅手动** = 只能由你在 `/` 菜单里主动调用；**可自动触发** = 模型也会在合适时机自己调用（同时仍可手动调用）。
 
 > ⚠️ **ttttt** 能向真实终端发键、经 ssh 操作远程机器：破坏性命令必须先经你确认，密码类交互有专门约束（绝不拼进命令行、拒绝 `sudo -S`），详见其 SKILL.md 的「安全防线」。
+
+## 批量安装工具链（可选）
+
+[`templates/install-prompt.md`](./templates/install-prompt.md) 是一份**整段粘贴给 AI 编程工具**的安装提示词：它先问你把技能绑到哪些 agent，再按条目分别用 `npx skills add`（skill 类）、MCP 配置（MCP 类）、包管理器（系统工具类）安装，不会把 skill 装成 MCP。除本仓库的 7 个技能外，还覆盖几套常用第三方 skill、MCP server 与 CLI 工具（repomix、chrome-devtools、anysearch、codegraph、agent-browser、rtk 等）——用不到的条目删掉即可。
+
+## 更新与卸载
+
+技能是**快照式安装**，装完不会自动跟随本仓库更新，需要手动刷新：
+
+```bash
+npx skills list                  # 列出已安装的技能及其 agent
+npx skills update -g -y          # 升级全局全部技能到最新
+npx skills update ccccc -g -y    # 只升级指定的几个
+npx skills update -p -y          # 只升级项目级（在项目目录内执行）
+npx skills remove <技能名>        # 卸载（按提示选择作用域）
+```
+
+只想刷新单个技能、或 `update` 报失败时，重跑一次 `npx skills add` 即可——幂等覆盖，不会产生重复。
 
 ## 采用同款全局规范（可选）
 
@@ -85,6 +105,8 @@ uv run --no-project scripts/validate.py     # 结构、frontmatter、README 索�
 uv run --no-project tests/test_verify.py    # change-linter 与自检脚本的回归用例
 uv run --no-project tests/test_install.py   # 安装行为回归（需 npx + 网络，离线自动跳过）
 ```
+
+仓库变更按日记录在 [CHANGELOG.md](./CHANGELOG.md)。
 
 ## License
 
