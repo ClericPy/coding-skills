@@ -215,6 +215,41 @@ class VerifyCliTest(CliTestCase):
         self.assertEqual(code, 1, "无项目配置时应回落兜底行宽 120 并报 E501")
         self.assertIn("E501", out)
 
+    def test_per_file_ignores_apply_with_absolute_paths(self) -> None:
+        """绝对路径 + cwd 不在配置根时，per-file-ignores 仍须生效。
+
+        回归：ruff 按「文件相对工作目录的路径」匹配 per-file-ignores，工作目录错位
+        会让 `app/**` 之类豁免静默失效，产生成片假阳性（实测 S101）。
+        """
+        if not shutil.which("ruff"):
+            self.skipTest("本机未安装 ruff")
+        repo = self.make_repo({})
+        (repo / "pyproject.toml").write_text(
+            '[project]\nname = "demo"\nversion = "0.1.0"\n\n'
+            '[tool.ruff.lint]\nselect = ["E", "F", "S"]\n\n'
+            '[tool.ruff.lint.per-file-ignores]\n"app/**" = ["S101"]\n',
+            encoding="utf-8",
+        )
+        (repo / "app").mkdir()
+        target = repo / "app" / "check.py"
+        target.write_text(
+            "def check(x):\n    assert x\n    return x\n", encoding="utf-8"
+        )
+
+        outside = self.tmp / "outside"
+        outside.mkdir()
+        code, out = self.run_cli(
+            VERIFY, outside, "--level", "L1", "--files", str(target)
+        )
+        self.assertEqual(code, 0, out)
+        self.assertNotIn("S101", out, out)
+
+        code, out = self.run_cli(
+            VERIFY, repo, "--level", "L1", "--files", "app/check.py"
+        )
+        self.assertEqual(code, 0, out)
+        self.assertNotIn("S101", out, out)
+
     def test_shellcheck_runs_when_available(self) -> None:
         """有 .sh 改动且本机装了 shellcheck 时加跑静态检查：未引号变量要被抓到。"""
         if not shutil.which("shellcheck"):

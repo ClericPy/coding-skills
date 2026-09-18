@@ -268,14 +268,47 @@ def _make_py_compile_check(py_files: list[str], temp_root: Path) -> Check:
     )
 
 
-def _has_project_ruff_config(cwd: Path) -> bool:
-    """被测项目自带 ruff 配置时返回 True；此时不传兜底参数，让 ruff 读项目自己的规则。"""
-    if any((cwd / name).is_file() for name in RUFF_CONFIG_NAMES):
-        return True
-    pyproject = cwd / PYPROJECT_NAME
-    return pyproject.is_file() and RUFF_SECTION_MARK in pyproject.read_text(
-        encoding="utf-8", errors="replace"
-    )
+def _find_ruff_config_root(start: Path) -> Path | None:
+    """向上查找自带 ruff 配置的目录，找不到返回 None。
+
+    返回的目录同时作为校验子进程的工作目录：ruff 的 per-file-ignores 按
+    「文件相对工作目录的路径」匹配，工作目录与配置所在目录不一致时豁免规则会静默失配
+    （表现为对 tests/** 之类规则的假阳性）。
+    """
+    for candidate in (start, *start.parents):
+        if any((candidate / name).is_file() for name in RUFF_CONFIG_NAMES):
+            return candidate
+        pyproject = candidate / PYPROJECT_NAME
+        if pyproject.is_file() and RUFF_SECTION_MARK in pyproject.read_text(
+            encoding="utf-8", errors="replace"
+        ):
+            return candidate
+    return None
+
+
+def _relative_or_original(raw: str, root: Path) -> str:
+    """单个路径相对化；不在 root 之内时原样返回。"""
+    try:
+        return Path(raw).relative_to(root).as_posix()
+    except ValueError:
+        return raw
+
+
+def _relativize(paths: list[str], root: Path) -> list[str]:
+    """把文件路径转成相对 root 的形式；不在 root 之内的保持原样。"""
+    return [_relative_or_original(raw, root) for raw in paths]
+
+
+def _config_root_for(cwd: Path, files: list[str]) -> Path | None:
+    """定位配置根：先按 cwd 上溯，找不到再按首个目标文件所在目录上溯。
+
+    调用方可能在项目之外（脚本被从任意目录调用），只按 cwd 找会漏掉配置，
+    导致 per-file-ignores 失配。
+    """
+    found = _find_ruff_config_root(cwd)
+    if found is not None or not files:
+        return found
+    return _find_ruff_config_root(Path(files[0]).resolve().parent)
 
 
 def _build_ruff_checks(
@@ -544,20 +577,26 @@ def _handle_empty_changes(
 
 def _print_mode_notes(
     args: argparse.Namespace, py_files: list[str], sh_files: list[str], cwd: Path
-) -> bool:
-    """打印本次运行的开关状态；返回是否启用项目自带 ruff 配置。"""
+) -> tuple[Path, bool]:
+    """打印本次运行的开关状态；返回 (校验工作目录, 是否启用项目自带 ruff 配置)。"""
     if args.project_scope:
         print("类型工具按项目级扫描（--project-scope）：可能连带暴露项目存量类型错误")
     if sh_files and _tool_path("shellcheck") is None:
         print(
             "可选增强: shellcheck 未安装，shell 校验仅 bash -n（不影响判定，可自行安装后重跑）"
         )
-    respect_ruff_config = bool(py_files and _has_project_ruff_config(cwd))
-    if respect_ruff_config:
+    config_root = _config_root_for(cwd, py_files)
+    if config_root is not None:
         print(
             "检测到项目自带 ruff 配置（pyproject.toml / ruff.toml），不使用脚本兜底参数"
         )
-    return respect_ruff_config
+    tool_root = config_root or cwd
+    if tool_root != cwd:
+        print(
+            f"校验工作目录改为配置所在目录 {tool_root}"
+            "（ruff 的 per-file-ignores 按相对工作目录的路径匹配）"
+        )
+    return tool_root, config_root is not None
 
 
 def _execute_checks(
@@ -612,13 +651,17 @@ def main(argv: list[str] | None = None) -> int:
     if empty_verdict is not None:
         return empty_verdict
 
-    respect_ruff_config = _print_mode_notes(args, py_files, sh_files, cwd)
+    tool_root, respect_ruff_config = _print_mode_notes(args, py_files, sh_files, cwd)
+    py_files = _relativize(py_files, tool_root)
+    sh_files = _relativize(sh_files, tool_root)
     needed = _needed_tools(args.level, bool(py_files), bool(sh_files))
     exe = _resolve_missing(needed, cwd, args.install_missing)
     missing = [tool for tool in needed if exe[tool] is None]
     hard = [tool for tool in missing if tool in REQUIRED_TOOLS]
     degraded = [tool for tool in missing if tool in DEGRADABLE_TOOLS]
-    outcomes = _execute_checks(args, py_files, sh_files, exe, cwd, respect_ruff_config)
+    outcomes = _execute_checks(
+        args, py_files, sh_files, exe, tool_root, respect_ruff_config
+    )
     return 0 if _report(args.level, outcomes, degraded, hard) else 1
 
 
