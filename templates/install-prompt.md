@@ -1,6 +1,6 @@
 # 批量安装 AI 技能 / 插件（Skills + MCP）
 
-> 用法：把本文件整段粘贴给 AI 编程工具（zcode / claude-code / codex 等），由它按下面步骤逐项执行。
+> 用法：把本文件整段粘贴给 AI 编程工具（claude-code / codex / opencode 等），由它按下面步骤逐项执行。
 > 所有命令里出现的 `<AGENTS>` 都来自你第 0 步选出来的智能体列表，多 agent 时展开成多个 `--agent` 参数。
 
 ## 分类总览（先分清类型，别装错地方）
@@ -28,15 +28,15 @@
 
 在执行任何安装命令之前，**先用弹窗或多选框问我**要把 skills 绑定到哪些智能体：
 
-- **默认勾选**：`zcode`、`claude-code`、`codex`（三个都预选中）。
+- **默认勾选**：`claude-code`、`codex`、`opencode`（三个都预选中）。
 - 再给一个**自定义输入框**，允许我手填其它智能体名。
 - 如果我在自定义框里输入的内容**包含空格**（例如 `cursor opencode`），就按多个 agent 处理，按空格拆开。
-- 把最终确认的 agent 列表记为 `AGENTS`（例如 `zcode claude-code codex`）。
+- 把最终确认的 agent 列表记为 `AGENTS`（例如 `claude-code codex opencode`）。
 
-**后续所有 `--agent` 命令都按这个列表展开**：只绑一个就写 `--agent zcode`；绑多个就**重复写多个 `--agent`**，例如：
+**后续所有 `--agent` 命令都按这个列表展开**：只绑一个就写 `--agent opencode`；绑多个就**重复写多个 `--agent`**，例如：
 
 ```bash
-npx skills add <仓库> --skill <名> --agent zcode --agent claude-code --agent codex -g -y
+npx skills add <仓库> --skill <名> --agent opencode --agent claude-code --agent codex -g -y
 ```
 
 > 不要只绑第一个、不要漏绑、不要把空格串当成一个 agent 名。
@@ -263,7 +263,7 @@ cargo install --git https://github.com/rtk-ai/rtk --branch master rtk
 rtk hook claude
 ```
 
-> 官方等价命令是 `rtk init`（按项目）或 `rtk init --global`（全局写 settings.json），与 `rtk hook claude` 二选一即可，别重复执行。但是 init 命令不支持 zcode。
+> 官方等价命令是 `rtk init`（按项目）或 `rtk init --global`（全局写 settings.json），与 `rtk hook claude` 二选一即可，别重复执行；若 `rtk init` 不认识你的 agent，改用 hook 方式即可。
 > 验证：`rtk --version` 能出版本，`rtk gain` 能看到节省仪表盘。
 
 ---

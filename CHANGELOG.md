@@ -5,6 +5,7 @@
 
 ## 2026-09-17
 
+- **22:20** `docs:` install-prompt 默认绑定 agent 由 zcode 改为 claude-code / codex / opencode（opencode 经 CLI 注册表核实为合法键）。
 - **22:16** `fix:` change-linter 修复 per-file-ignores 假阳性：校验子进程改用配置所在目录为工作目录并传相对路径（ruff 按相对工作目录匹配豁免规则，绝对路径 + cwd 偏移会让 `tests/**` 之类豁免静默失效）；新增回归用例覆盖「项目外调用」与「子目录调用」两场景；lint-levels.md 补行为说明。
 - **22:23** `docs:` 纠正 README 安装落点说明（此前误称全局安装都落 `~/.agents/skills/`）：命令式 `-g -a <agent>` 落在 agent 目录，交互式/多 agent 才走通用目录 + 链接布局；补 skills.sh 收录 404 说明；CONTRIBUTING 补 CHANGELOG 条目格式（日期段 + HH:MM + 前缀）。
 - **21:51** `docs:` 模板再次同步作者全局规范（4862 → 5450 字符）：新增「求简优先序」（YAGNI→复用→标准库→原生→已装依赖→一行→最小实现）、「Bug 修复追根因」（先 grep 调用者、共享路径单点修复）、「验证分工」补最小可运行自检要求、「严格禁止」补禁无边界抽象条；细化推荐标注规则、授权提交流程措辞、CR 授权表述与「求简不丢信息」的删解释原则。
