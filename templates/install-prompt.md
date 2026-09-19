@@ -14,7 +14,7 @@
 | chrome-devtools-mcp    | MCP server | npx 启动，写 MCP 配置             |
 | anysearch              | HTTP MCP   | 写 MCP 配置（需 API key）         |
 | codegraph              | 工具 + MCP   | 安装脚本 / npm 全局，`serve --mcp` |
-| agent-browser          | 工具 + MCP   | npm 全局 / brew / cargo       |
+| agent-browser          | CLI + skill | npm 全局 / brew / cargo + `npx skills add` |
 | rtk                    | 系统工具       | winget / brew / 脚本          |
 | ClericPy/coding-skills | skill      | `npx skills add`（绑定 agent）  |
 | skill-creator          | skill      | `npx skills add`（绑定 agent）  |
@@ -196,11 +196,11 @@ codegraph serve --mcp    # 以 stdio MCP server 运行
 
 ---
 
-## 第 8 步：agent-browser（工具 + MCP）
+## 第 8 步：agent-browser（CLI + skill）
 
-**简介**：Vercel Labs 出品的 AI 浏览器自动化 CLI（Rust 内核，token 高效），后台常驻 Node daemon 驱动 Chrome for Testing，提供 accessibility tree 快照、点击/填表/截图/网络拦截/cookie 管理；本身就是 MCP server。仓库：<https://github.com/vercel-labs/agent-browser>。先装工具，再以 MCP 方式启动。
+**简介**：Vercel Labs 出品的 AI 浏览器自动化 CLI（Rust 内核，token 高效），后台常驻 Node daemon 驱动 Chrome for Testing，提供 accessibility tree 快照、点击/填表/截图/网络拦截/cookie 管理。仓库：<https://github.com/vercel-labs/agent-browser>。装 CLI，再装配套 skill 教 agent 怎么用它；**不写 MCP 配置**（它自带 `agent-browser mcp` 子命令，本清单不启用）。
 
-**安装**：
+**安装 CLI**：
 
 ```bash
 # 跨平台推荐（npm 全局）
@@ -223,11 +223,13 @@ cargo install agent-browser
 agent-browser install --with-deps
 ```
 
-作为 MCP server 启动：
+**安装 skill**（薄发现层，只教 agent 认识 agent-browser 并转去 CLI 取运行时说明）：
 
 ```bash
-agent-browser mcp            # stdio；默认 core 工具集，--tools all 为全量
+npx skills add vercel-labs/agent-browser --agent <AGENTS> -g -y
 ```
+
+> 详细用法由 CLI 自己提供：`agent-browser skills get core`（`--full` 带完整命令参考），另有 electron / slack / dogfood 等专项。
 
 ---
 
@@ -311,7 +313,7 @@ npx skills add JuliusBrussee/caveman --skill caveman --agent <AGENTS> -g -y
 ## 执行要求
 
 1. **第 0 步没确认 agent 列表之前，不要执行任何带 `--agent` 的命令。**
-2. **类型别搞混**：标为 skill 的条目（i-have-adhd、Mattpocock、ClericPy/coding-skills、skill-creator、caveman）一律 `npx skills add`，**不要**写成 MCP 配置或 winget；标为 MCP 的条目（repomix、chrome-devtools-mcp、anysearch、codegraph serve --mcp、agent-browser mcp）才写 MCP 配置；winget 只用于 rtk（Windows 且装有 winget 时）。
+2. **类型别搞混**：标为 skill 的条目（i-have-adhd、Mattpocock、ClericPy/coding-skills、skill-creator、caveman、agent-browser）一律 `npx skills add`，**不要**写成 MCP 配置或 winget（agent-browser 另有 CLI，用 npm / brew / cargo 装，同样**不要**写 MCP 配置）；标为 MCP 的条目（repomix、chrome-devtools-mcp、anysearch、codegraph serve --mcp）才写 MCP 配置；winget 只用于 rtk（Windows 且装有 winget 时）。
 3. 需要 key 的只有第 6 步 anysearch：**停下来弹窗问我要 key**，拿到后再写 MCP 配置，不要留占位字符串就当完成。
 4. 每个条目装完用一行输出告诉我结果（成功 / 失败 / 已存在），失败的把报错贴出来，不要静默跳过。
 5. 命令以本文件给出的为准，不要自行换成别的工具或参数。

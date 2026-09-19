@@ -3,6 +3,10 @@
 本项目所有可见变更按时间倒序记录于此。格式参照 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 条目以 `HH:MM` 标注提交时间，未提交的改动先归入「未发布」，随当次提交并入日期段落。
 
+## 2026-09-19
+
+- **23:39** `docs:` install-prompt 的 agent-browser 改为「CLI + skill」两段安装（npm/brew/cargo 装 CLI，`npx skills add vercel-labs/agent-browser` 装配套 skill），删除 `agent-browser mcp` 启动段与执行要求 MCP 清单中的该项；分类总览、执行要求类型说明同步。README 工具链清单保留 agent-browser。
+
 ## 2026-09-17
 
 - **22:20** `docs:` install-prompt 默认绑定 agent 由 zcode 改为 claude-code / codex / opencode（opencode 经 CLI 注册表核实为合法键）。
