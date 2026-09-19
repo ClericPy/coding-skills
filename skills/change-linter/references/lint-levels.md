@@ -51,7 +51,7 @@ uv tool install pyrefly --upgrade
 
 ```bash
 # Bash 的 cwd 必须是你的项目目录（改动发现依赖它）
-SKILL_DIR="${ZCODE_SKILL_DIR:-${CLAUDE_SKILL_DIR}}"   # ZCode 展开 ZCODE_、Claude Code 展开 CLAUDE_；都未展开时直接填本技能 base directory
+SKILL_DIR="${ZCODE_SKILL_DIR:-${CLAUDE_SKILL_DIR}}"   # 由 harness 展开自己的技能目录变量；都未展开时直接填本技能 base directory
 
 uv run --no-project "$SKILL_DIR/scripts/verify.py" --level L2                    # 自动发现改动的 .py/.sh
 uv run --no-project "$SKILL_DIR/scripts/verify.py" --level L1 --files a.py       # 显式指定文件

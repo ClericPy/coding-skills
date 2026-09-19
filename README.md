@@ -1,6 +1,6 @@
 # coding-skills
 
-个人编码工作流技能集，面向 ZCode / Claude Code 等支持 Agent Skills 的工具。
+个人编码工作流技能集，面向 Claude Code 等支持 Agent Skills 的工具。
 
 [![skills.sh](https://skills.sh/b/ClericPy/coding-skills)](https://skills.sh/ClericPy/coding-skills)
 
@@ -8,14 +8,16 @@
 
 ## English
 
-A personal coding-workflow skill collection for ZCode / Claude Code and any tool that reads the Agent Skills format, distributed via `npx skills add`. Requires Node.js with `npx` available.
+A personal coding-workflow skill collection for Claude Code and any tool that reads the Agent Skills format, distributed via `npx skills add`. Requires Node.js with `npx` available.
 
 ```bash
-npx skills add ClericPy/coding-skills --list                              # preview only
-npx skills add ClericPy/coding-skills -g -a zcode -y                      # install all (user scope)
-npx skills add ClericPy/coding-skills -a zcode -y                         # install into the current repo
-npx skills add ClericPy/coding-skills -a zcode --skill change-linter -y   # install a single skill
+npx skills add ClericPy/coding-skills --list                             # preview only
+npx skills add ClericPy/coding-skills -g -a <agent> -y                   # install all (user scope)
+npx skills add ClericPy/coding-skills -a <agent> -y                      # install into the current repo
+npx skills add ClericPy/coding-skills -a <agent> --skill change-linter -y # install a single skill
 ```
+
+`<agent>` 是 harness 名，例如 `claude-code`、`codex`、`opencode`；可用 `npx skills add --help` 查看本机 CLI 认的全部取值。
 
 Skills: **ccccc** (normalized git commits) · **ppppp** (prompt modulator, 10 templates) · **ttttt** (tmux terminal co-pilot) · **wwwww** (openspec change flow) · **yyyyy** (change acceptance & archive) · **code-review-expert** (senior-level code review) · **change-linter** (L1–L4 post-edit checks, auto-triggered)
 
@@ -27,21 +29,23 @@ Details in the Chinese sections below. Installed copies are snapshots: refresh t
 # 预览仓库里的技能（只列出，不安装）
 npx skills add ClericPy/coding-skills --list
 
-# 全局安装全部技能到 ZCode（→ ~/.zcode/skills/<name>/）
-npx skills add ClericPy/coding-skills -g -a zcode -y
+# 全局安装全部技能（→ 该 agent 的 skills 目录，如 ~/.claude/skills/<name>/）
+npx skills add ClericPy/coding-skills -g -a <agent> -y
 
-# 项目级安装（→ <repo>/.zcode/skills/<name>/，可随仓库提交、共享给团队）
-npx skills add ClericPy/coding-skills -a zcode -y
+# 项目级安装（→ <repo>/<agent 目录>/skills/<name>/，可随仓库提交、共享给团队）
+npx skills add ClericPy/coding-skills -a <agent> -y
 
 # 只装某一个技能
-npx skills add ClericPy/coding-skills -a zcode --skill change-linter -y
+npx skills add ClericPy/coding-skills -a <agent> --skill change-linter -y
 ```
+
+`<agent>` 换成你的 harness 名（`claude-code` / `codex` / `opencode` 等），多个 harness 想都装就按第 0 步那样重复 `-a`。
 
 装好后用 `/技能名` 调用，例如 `/ccccc`、`/code-review-expert`。
 
 > **别用 `--all`。** 实测它会把技能散进多个 agent 目录（本机出现 `.agents/skills/` 与 `agent/skills/` **两份完整真实副本**，其余目录放符号链接），而且具体落点取决于本机检测到了哪些 agent，不稳定。要可预测就显式指定 `-a <agent>`。
 >
-> **安装落点**（实测两种布局，取决于装法）：① 命令式 `-g -a <agent>`——技能直接落进该 agent 的目录，ZCode 即 `~/.zcode/skills/<name>/`（本机实测此路径下生成技能目录，且不出现 `~/.agents/skills/`）；② 交互式安装或多 agent——实体统一放通用目录 `~/.agents/skills/<name>/`，各 agent 目录里放链接指向它（Windows 上是 **JUNCTION**，无需开发者模式）。两种布局装的都是**快照**，不跟随源仓库更新，见下方「更新与卸载」。
+> **安装落点**（实测两种布局，取决于装法）：① 命令式 `-g -a <agent>`——技能直接落进**该 agent 自己的** skills 目录（本机实测此路径下生成技能目录，且不出现 `~/.agents/skills/`）；② 交互式安装或多 agent——实体统一放通用目录 `~/.agents/skills/<name>/`，各 agent 目录里放链接指向它（Windows 上是 **JUNCTION**，无需开发者模式）。两种布局装的都是**快照**，不跟随源仓库更新，见下方「更新与卸载」。
 
 ## 技能
 
@@ -79,7 +83,7 @@ npx skills remove <技能名>        # 卸载（按提示选择作用域）
 
 ## 采用同款全局规范（可选）
 
-[`templates/AGENTS.md`](./templates/AGENTS.md) 是作者在用的全局工程规范（与 `change-linter` 技能联动），可整份采用。想要同款：把它复制到 `~/.zcode/AGENTS.md`（或项目根 `AGENTS.md`），再按项目裁剪；用作项目级时按 [agents.md](https://agents.md) 标准建议补构建/测试命令、项目约定与安全注意事项；**已有配置时先对比合并，不要直接覆盖**——全局规范是每个人自己的东西，技能不会也不会替你装它。
+[`templates/AGENTS.md`](./templates/AGENTS.md) 是作者在用的全局工程规范（与 `change-linter` 技能联动），可整份采用。想要同款：把它复制到你的 harness 的全局指令位置（例如 `~/.claude/AGENTS.md`，或项目根 `AGENTS.md`），再按项目裁剪；用作项目级时按 [agents.md](https://agents.md) 标准建议补构建/测试命令、项目约定与安全注意事项；**已有配置时先对比合并，不要直接覆盖**——全局规范是每个人自己的东西，技能不会也不会替你装它。
 
 ## 依赖工具
 

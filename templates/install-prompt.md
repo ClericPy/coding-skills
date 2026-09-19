@@ -152,7 +152,7 @@ npx -y chrome-devtools-mcp@latest --autoConnect
 
    顺带一提：`X-Anysearch-Client: mcp/1.0.0` 是固定值、不是密钥，写死即可。
 
-3. **目标 agent 不支持变量引用时退回明文**：例如 ZCode 的 HTTP MCP 只收静态 headers（官方文档未提供占位符展开），此时把真实 key 写进配置，并同时告诉我三件事——这份配置文件从此含密钥、不要提交到 git、权限收紧到本人可读；作用域能选 user 级就别选项目级。我若明确不接受明文，就别写 `Authorization` 头，走匿名模式（无 key 也能用，只是速率更低）。
+3. **目标 agent 不支持变量引用时退回明文**：有些 harness 的 HTTP MCP 只收静态 headers（不提供占位符展开），此时把真实 key 写进配置，并同时告诉我三件事——这份配置文件从此含密钥、不要提交到 git、权限收紧到本人可读；作用域能选 user 级就别选项目级。我若明确不接受明文，就别写 `Authorization` 头，走匿名模式（无 key 也能用，只是速率更低）。
 4. 通用明文写法（仅在上一步回退时使用，`<ANYSEARCH_TOKEN>` 处填真实 key）：
 
 ```json
@@ -328,7 +328,7 @@ npx skills add JuliusBrussee/caveman --skill caveman --agent <AGENTS> -g -y
 
 1. **第 0 步没确认 agent 列表之前，不要执行任何带 `--agent` 的命令。**
 2. **类型别搞混**：标为 skill 的条目（i-have-adhd、Mattpocock、ClericPy/coding-skills、skill-creator、caveman、agent-browser）一律 `npx skills add`，**不要**写成 MCP 配置或 winget（agent-browser 另有 CLI，用 npm / brew / cargo 装，同样**不要**写 MCP 配置）；标为 MCP 的条目（repomix、chrome-devtools-mcp、anysearch、codegraph serve --mcp）才写 MCP 配置；winget 只用于 rtk（Windows 且装有 winget 时）。
-3. 需要 key 的只有第 6 步 anysearch：**停下来弹窗问我要 key**，拿到后**先按目标 agent 的语法写环境变量引用**，该 agent 不支持（如 ZCode 的静态 headers）才退回明文并告知我「配置文件已含密钥」；任何情况下都不要留着 `<ANYSEARCH_API_KEY>` 占位符就当完成。
+3. 需要 key 的只有第 6 步 anysearch：**停下来弹窗问我要 key**，拿到后**先按目标 agent 的语法写环境变量引用**，该 agent 不支持（HTTP MCP 只收静态 headers 时）才退回明文并告知我「配置文件已含密钥」；任何情况下都不要留着 `<ANYSEARCH_API_KEY>` 占位符就当完成。
 4. 每个条目装完用一行输出告诉我结果（成功 / 失败 / 已存在），失败的把报错贴出来，不要静默跳过。
 5. 命令以本文件给出的为准，不要自行换成别的工具或参数。
 6. 注意有些技能或工具已经安装过了，不要出现重复。

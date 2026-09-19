@@ -32,6 +32,10 @@ ALL_SKILLS = (
     "yyyyy",
 )
 
+# 安装目标 harness：用一个 CLI 认的 agent 键做黑盒回归，落点即该 agent 自己的 skills 目录
+AGENT = "claude-code"
+AGENT_DIR = ".claude"
+
 CLI_TIMEOUT_SECONDS = 240
 
 
@@ -103,9 +107,9 @@ class InstallCliTest(unittest.TestCase):
 
     def test_single_agent_install_copies_all_skills(self) -> None:
         project = self.new_project()
-        code, out = self.add(project, "-a", "zcode")
+        code, out = self.add(project, "-a", AGENT)
         self.assertEqual(code, 0, out)
-        installed = project / ".zcode" / "skills"
+        installed = project / AGENT_DIR / "skills"
         self.assertEqual(
             sorted(p.name for p in installed.iterdir()), sorted(ALL_SKILLS)
         )
@@ -122,20 +126,20 @@ class InstallCliTest(unittest.TestCase):
     def test_installed_files_match_source_byte_for_byte(self) -> None:
         """安装不得改写任何文件（含 frontmatter）。"""
         project = self.new_project()
-        code, out = self.add(project, "-a", "zcode")
+        code, out = self.add(project, "-a", AGENT)
         self.assertEqual(code, 0, out)
         for name in ALL_SKILLS:
             with self.subTest(skill=name):
                 self.assert_same_tree(
-                    SKILLS_DIR / name, project / ".zcode" / "skills" / name
+                    SKILLS_DIR / name, project / AGENT_DIR / "skills" / name
                 )
 
     def test_invocation_mode_survives_install(self) -> None:
         """装完后 6 个仅手动、1 个可自动的划分必须原样保留。"""
         project = self.new_project()
-        code, out = self.add(project, "-a", "zcode")
+        code, out = self.add(project, "-a", AGENT)
         self.assertEqual(code, 0, out)
-        installed = project / ".zcode" / "skills"
+        installed = project / AGENT_DIR / "skills"
         manual = (installed / "ccccc" / "SKILL.md").read_text(encoding="utf-8")
         automatic = (installed / "change-linter" / "SKILL.md").read_text(
             encoding="utf-8"
@@ -145,19 +149,19 @@ class InstallCliTest(unittest.TestCase):
 
     def test_reinstall_is_idempotent(self) -> None:
         project = self.new_project()
-        self.assertEqual(self.add(project, "-a", "zcode")[0], 0)
-        code, out = self.add(project, "-a", "zcode")
+        self.assertEqual(self.add(project, "-a", AGENT)[0], 0)
+        code, out = self.add(project, "-a", AGENT)
         self.assertEqual(code, 0, out)
-        installed = project / ".zcode" / "skills"
+        installed = project / AGENT_DIR / "skills"
         self.assertEqual(
             sorted(p.name for p in installed.iterdir()), sorted(ALL_SKILLS)
         )
 
     def test_single_skill_install(self) -> None:
         project = self.new_project()
-        code, out = self.add(project, "--skill", "ccccc", "-a", "zcode")
+        code, out = self.add(project, "--skill", "ccccc", "-a", AGENT)
         self.assertEqual(code, 0, out)
-        installed = project / ".zcode" / "skills"
+        installed = project / AGENT_DIR / "skills"
         self.assertEqual([p.name for p in installed.iterdir()], ["ccccc"])
 
     def assert_same_tree(self, source: Path, installed: Path) -> None:

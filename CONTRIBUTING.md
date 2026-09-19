@@ -53,7 +53,7 @@ coding-skills/
 
 - **`references/*.md`**：SKILL.md 只留流程与契约，把大段规则、清单、表格下沉到这里，并在 SKILL.md 里写明**何时读取**。SKILL.md 正文超过 500 行时自检会给出 warning。
 - **`scripts/*.py`**：技能要执行的机械步骤（如发现改动文件、跑外部工具）。脚本不要写仓库，级别判定这类判断题留在 SKILL.md 里由模型完成。脚本自身的后置校验至少 L2。
-  - **调用写成 `uv run --no-project "$SKILL_DIR/scripts/x.py"`**（`SKILL_DIR="${ZCODE_SKILL_DIR:-${CLAUDE_SKILL_DIR}}"`，ZCode 展开 ZCODE_ 前缀、Claude Code 展开 CLAUDE_ 前缀）。uv 自带 Python，所以一条命令跨全平台，**不要为不同系统各写一个启动器**，也不依赖系统上有没有 `python`。
+  - **调用写成 `uv run --no-project "$SKILL_DIR/scripts/x.py"`**（`SKILL_DIR="${ZCODE_SKILL_DIR:-${CLAUDE_SKILL_DIR}}"`，由 harness 展开自己的技能目录变量）。uv 自带 Python，所以一条命令跨全平台，**不要为不同系统各写一个启动器**，也不依赖系统上有没有 `python`。
   - **禁止**写 `python scripts/x.py` 这类相对路径：Bash 的 cwd 是用户项目目录，不是技能目录。
   - 整个技能目录（含 `scripts/`、`references/`）都会随 `npx skills add` 一起安装，所以脚本里不要写死本机绝对路径。
 
@@ -84,4 +84,4 @@ uv run --no-project tests/test_install.py          # 安装行为回归（离线
 
 自检**只打印**每个技能的调用方式，不强制它必须手动或自动——两种都是合法设计。
 
-`validate.py` 的 frontmatter 解析是手写单行解析，不支持多行 YAML 块（`|`）等写法——本仓库约定 `name` / `description` 一律写成单行引号字符串。发布前可用官方参考校验器做交叉验证：`uvx --from skills-ref agentskills validate ./skills/<name>`。注意：它按开放标准六字段校验，会把 `disable-model-invocation` / `argument-hint` 等 Claude Code 扩展字段报为 unexpected——**这是预期行为**（本仓库经 `npx skills add` 分发到 Claude Code / ZCode，两者均接受扩展字段），只有六字段（name/description/license/compatibility/metadata/allowed-tools）内的告警才算真问题。
+`validate.py` 的 frontmatter 解析是手写单行解析，不支持多行 YAML 块（`|`）等写法——本仓库约定 `name` / `description` 一律写成单行引号字符串。发布前可用官方参考校验器做交叉验证：`uvx --from skills-ref agentskills validate ./skills/<name>`。注意：它按开放标准六字段校验，会把 `disable-model-invocation` / `argument-hint` 等 Claude Code 扩展字段报为 unexpected——**这是预期行为**（本仓库经 `npx skills add` 分发，主流 harness 普遍接受扩展字段），只有六字段（name/description/license/compatibility/metadata/allowed-tools）内的告警才算真问题。

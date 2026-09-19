@@ -5,6 +5,7 @@
 
 ## 2026-09-20
 
+- **00:55** `docs:` 全仓去掉 ZCode 提及：README（简介、英文段、Quickstart 安装示例改用 `<agent>` 占位并给出 claude-code / codex / opencode 取值、安装落点、AGENTS.md 落点）、CONTRIBUTING（校验器扩展字段说明、脚本调用约定注释）、install-prompt（AnySearch 回退处改为「有些 harness」）、CHANGELOG 历史条目改写；测试夹具改用 `-a claude-code` 与 `.claude/skills`（`claude-code` 为 CLI 认的键，安装回归 6 例实测通过）。功能性回退变量 `ZCODE_SKILL_DIR` 按决定保留，仅去掉其解释文字里的 ZCode 表述。
 - **00:52** `test:` 修掉本机长期红的 `test_shellcheck_runs_when_available`：它只判 shellcheck 是否存在，而 L1 的 `.sh` 分支以 bash 为准，本机缺 bash 时根本不进入 shellcheck，断言必然落空——补上 bash 前置并说明理由。
 - **00:32** `docs:` yyyyy 收敛为验收闸门：新增「边界」节（只判能不能收/能不能发，需要深审时提示用户手动 `/code-review-expert`，不调用其它技能，不翻历史旧账），第 2 条收窄为「只拦明显问题」；新增六条闸门检查（证据锚定、配套同步、依赖与锁文件、发布面、静默破坏类疑点不得默默放过、测试与 linter 报过的不重复挑），总结须写明覆盖/跳过/待确认；description 与 README 技能表同步。
 - **00:21** `docs:` code-review-expert 吸收外部开源 CR 工具的评审纪律（仅借鉴工程判断，文本与示例均自研、无逐字引用）：四维度扩为六维度（新增「性能与资源成本」「兼容性与行为变更」，维度一补依赖锁文件 / CI 权限 / 配置漂移），每个维度补「不报」豁免；门禁补四条口径（受保护主题不适用证据不全即丢弃、先落实事实来源、低价值≠错误、不重复静态工具结论）；流程补只评新增行 / 默认不读的文件 / 语义分组 / 大改动先风险定位（≥50 行单文件或 ≥100 行一组）/ 超预算受控截断须显式声明；定级补线上兼容破坏 Blocker、性能与依赖 Major、受保护主题五类清单与「不可验证≠错误」。

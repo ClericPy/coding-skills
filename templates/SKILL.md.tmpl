@@ -29,7 +29,7 @@ description: "<这个技能做什么、什么时候该用它>"
 调用脚本**必须用绝对路径**（Bash 的 cwd 是用户项目目录，不是技能目录），指令里禁止写 `python scripts/<name>.py` 这种相对路径：
 
 ```bash
-SKILL_DIR="${ZCODE_SKILL_DIR:-${CLAUDE_SKILL_DIR}}"   # ZCode 展开 ZCODE_、Claude Code 展开 CLAUDE_；都未展开时直接填本技能 base directory 的绝对路径
+SKILL_DIR="${ZCODE_SKILL_DIR:-${CLAUDE_SKILL_DIR}}"   # 由 harness 展开自己的技能目录变量；都未展开时直接填本技能 base directory 的绝对路径
 uv run --no-project "$SKILL_DIR/scripts/<name>.py" --help
 ```
 

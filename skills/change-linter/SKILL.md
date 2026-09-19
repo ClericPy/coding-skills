@@ -22,7 +22,7 @@ allowed-tools: Bash(${CLAUDE_SKILL_DIR}/scripts/verify.py *)
 2. **执行** — 用 uv 跑脚本（uv 自带 Python，一条命令跨全平台，不依赖系统上有没有 `python`）：
 
    ```bash
-   SKILL_DIR="${ZCODE_SKILL_DIR:-${CLAUDE_SKILL_DIR}}"   # ZCode 展开 ZCODE_、Claude Code 展开 CLAUDE_；都未展开时直接填本技能 base directory
+   SKILL_DIR="${ZCODE_SKILL_DIR:-${CLAUDE_SKILL_DIR}}"   # 由 harness 展开自己的技能目录变量；都未展开时直接填本技能 base directory
    uv run --no-project "$SKILL_DIR/scripts/verify.py" --level L<N>
    ```
 
