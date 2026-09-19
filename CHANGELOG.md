@@ -5,6 +5,7 @@
 
 ## 2026-09-19
 
+- **23:46** `docs:` install-prompt 第 6 步（AnySearch）改为「先试环境变量、不支持再退回明文」：补 Claude Code `${VAR}`（未导出且无默认值会解析失败）/ Codex `bearer_token_env_var`、`env_http_headers` / OpenCode `{env:VAR}` 三种写法，明文回退时要求告知「配置文件含密钥、别提交 git、收紧权限」，并给匿名模式出口与 `mcp list` 验证步骤；执行要求第 3 条同步。
 - **23:39** `docs:` install-prompt 的 agent-browser 改为「CLI + skill」两段安装（npm/brew/cargo 装 CLI，`npx skills add vercel-labs/agent-browser` 装配套 skill），删除 `agent-browser mcp` 启动段与执行要求 MCP 清单中的该项；分类总览、执行要求类型说明同步。README 工具链清单保留 agent-browser。
 
 ## 2026-09-17
