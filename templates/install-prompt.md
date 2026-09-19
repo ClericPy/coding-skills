@@ -141,16 +141,19 @@ npx -y chrome-devtools-mcp@latest --autoConnect
 **做法**：
 
 1. **弹窗问我要 AnySearch API Key**（形如 `as_sk_...`）。
-2. **优先写环境变量引用，不要一上来就写明文**。先在系统里把 key 导出成变量（Windows：`setx ANYSEARCH_API_KEY <key>` 后**新开终端**；macOS / Linux：写 shell profile），再按目标 agent 的语法引用它：
-   - **Claude Code**：`.mcp.json` 里 `"Authorization": "Bearer ${ANYSEARCH_API_KEY}"`。支持 `${VAR}` 与 `${VAR:-默认值}`，在 `command` / `args` / `env` / `url` / `headers` 中都会展开；变量没导出又没写默认值时配置会直接解析失败，别把裸 `${VAR}` 留在配置里。
-   - **Codex CLI**：`~/.codex/config.toml` 里 `bearer_token_env_var = "ANYSEARCH_API_KEY"`。Codex 没有 `${}` 占位符，靠这个键指定「token 存在哪个变量」；固定值的头走 `http_headers`，值取自环境变量的头走 `env_http_headers`。CLI 只提供 `codex mcp add <名字> --url <url> --bearer-token-env-var ANYSEARCH_API_KEY`，自定义头需手改 config.toml。
-   - **OpenCode**：`opencode.json` 里 `"Authorization": "Bearer {env:ANYSEARCH_API_KEY}"`。用 `{env:VAR}` 占位符；注意字段是 `mcp` 段 + `"type": "remote"`，不是 `mcpServers`。
+2. **优先写环境变量引用，不要一上来就写明文**。先在系统里把 key 导出成变量（Windows：`setx ANYSEARCH_TOKEN <key>` 后**新开终端**；macOS / Linux：写 shell profile），再按目标 agent 的语法引用它：
+   - **Claude Code**：`.mcp.json` 里 `"Authorization": "Bearer ${ANYSEARCH_TOKEN}"`。支持 `${VAR}` 与 `${VAR:-默认值}`，在 `command` / `args` / `env` / `url` / `headers` 中都会展开；变量没导出又没写默认值时配置会直接解析失败，别把裸 `${VAR}` 留在配置里。
+   - **Codex CLI**：`~/.codex/config.toml` 里 `bearer_token_env_var = "ANYSEARCH_TOKEN"`。Codex 没有 `${}` 占位符，靠这个键指定「token 存在哪个变量」；固定值的头走 `http_headers`，值取自环境变量的头走 `env_http_headers`。CLI 只提供 `codex mcp add <名字> --url <url> --bearer-token-env-var ANYSEARCH_TOKEN`，自定义头需手改 config.toml。
+   - **OpenCode**：`opencode.json` 里 `"Authorization": "Bearer {env:ANYSEARCH_TOKEN}"`。用 `{env:VAR}` 占位符；注意字段是 `mcp` 段 + `"type": "remote"`，不是 `mcpServers`。
+   - **DSH**：`~/.dsh/cordis.patch.yml` 里那行写成 ``Authorization: !!js "`Bearer ${process.env.ANYSEARCH_TOKEN}`"``。**外侧那对双引号必须保留**：`!!js` 只接受标量，值以反引号开头又不加引号时整个 patch 文件解析失败（报 `cannot resolve a node with !<tag:yaml.org,2002:js>`），重启后**这一层所有 MCP 行一起消失**，不是只坏一行；写成 `!!js Bearer ${process.env.ANYSEARCH_TOKEN}`（无引号无反引号）YAML 能过但不展开。
    - 不确定就按 agent 名去查它自己的 MCP 文档，别把一个 agent 的语法套到另一个上。
+
+   DSH 上另有两个实测坑：①**先设变量、再重启 dsh**——`!!js` 在条目装载时求值，运行中热重载只会算出 `Bearer undefined`（anysearch 回 `invalid_api_key`），也别从已经开着的旧终端启动；②**别用 shell 里的 `echo %ANYSEARCH_TOKEN%` 验收**——名称含 `KEY` / `PASSWORD` / `SECRET` / `TOKEN` 的变量会被 DSH 从所有子进程（shell、stdio MCP、子任务）里擦掉，那里永远是空的，属正常现象。正确验收见第 5 条。要回滚就把那行换回 `Authorization: 'Bearer <token>'`。
 
    顺带一提：`X-Anysearch-Client: mcp/1.0.0` 是固定值、不是密钥，写死即可。
 
 3. **目标 agent 不支持变量引用时退回明文**：例如 ZCode 的 HTTP MCP 只收静态 headers（官方文档未提供占位符展开），此时把真实 key 写进配置，并同时告诉我三件事——这份配置文件从此含密钥、不要提交到 git、权限收紧到本人可读；作用域能选 user 级就别选项目级。我若明确不接受明文，就别写 `Authorization` 头，走匿名模式（无 key 也能用，只是速率更低）。
-4. 通用明文写法（仅在上一步回退时使用，`<ANYSEARCH_API_KEY>` 处填真实 key）：
+4. 通用明文写法（仅在上一步回退时使用，`<ANYSEARCH_TOKEN>` 处填真实 key）：
 
 ```json
 {
@@ -159,7 +162,7 @@ npx -y chrome-devtools-mcp@latest --autoConnect
       "type": "http",
       "url": "https://api.anysearch.com/mcp",
       "headers": {
-        "Authorization": "Bearer <ANYSEARCH_API_KEY>",
+        "Authorization": "Bearer <ANYSEARCH_TOKEN>",
         "X-Anysearch-Client": "mcp/1.0.0"
       }
     }
@@ -167,13 +170,13 @@ npx -y chrome-devtools-mcp@latest --autoConnect
 }
 ```
 
-Claude Code 等价命令行（想用变量引用就把 header 写成 `Authorization: Bearer ${ANYSEARCH_API_KEY}`，写入后按上面 Claude Code 的展开规则解析）：
+Claude Code 等价命令行（想用变量引用就把 header 写成 `Authorization: Bearer ${ANYSEARCH_TOKEN}`，写入后按上面 Claude Code 的展开规则解析）：
 
 ```bash
-claude mcp add --transport http anysearch https://api.anysearch.com/mcp --scope user --header "Authorization: Bearer <ANYSEARCH_API_KEY>" --header "X-Anysearch-Client: mcp/1.0.0"
+claude mcp add --transport http anysearch https://api.anysearch.com/mcp --scope user --header "Authorization: Bearer <ANYSEARCH_TOKEN>" --header "X-Anysearch-Client: mcp/1.0.0"
 ```
 
-5. **验证**：装完用 `claude mcp list` / `codex mcp list` / `opencode mcp list` 看 anysearch 是否连上；连不上先确认变量在当前进程里可见（改完环境变量要新开终端或重启 agent），仍不行再退回明文。写出配置不等于装成功。
+5. **验证**：装完用 `claude mcp list` / `codex mcp list` / `opencode mcp list` 看 anysearch 是否连上；DSH 用 `dsh --profile web --dump-config`，输出里搜不到 `as_sk_` 才算没留明文（该 dump 不求值 `!!js`），再实际搜一次、能出结果才算通；patch 文件被改坏时用 `dsh --profile web --dump-default-config` 诊断（这个模式不解析用户层）。连不上先确认变量在当前进程里可见（改完环境变量要新开终端或重启 agent，DSH 必须重启），仍不行再退回明文。写出配置不等于装成功。
 
 ---
 

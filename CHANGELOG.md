@@ -3,6 +3,10 @@
 本项目所有可见变更按时间倒序记录于此。格式参照 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 条目以 `HH:MM` 标注提交时间，未提交的改动先归入「未发布」，随当次提交并入日期段落。
 
+## 2026-09-20
+
+- **00:12** `docs:` install-prompt 第 6 步补 DSH 的变量引用写法与两个实测坑：`~/.dsh/cordis.patch.yml` 用 ``Authorization: !!js "`Bearer ${process.env.ANYSEARCH_TOKEN}`"``（外层双引号必须保留，漏掉会让整个 patch 层解析失败、该层所有 MCP 行一起消失）；先设变量再重启 dsh（运行中热重载只会算出 `Bearer undefined`）；验收不能用 shell echo（DSH 按 `/KEY|PASSWORD|SECRET|TOKEN/i` 从子进程擦除这类变量），改用 `dsh --profile web --dump-config` 搜不到 `as_sk_` 加实际搜一次，写坏了用 `--dump-default-config` 诊断；变量名统一为 `ANYSEARCH_TOKEN`。
+
 ## 2026-09-19
 
 - **23:46** `docs:` install-prompt 第 6 步（AnySearch）改为「先试环境变量、不支持再退回明文」：补 Claude Code `${VAR}`（未导出且无默认值会解析失败）/ Codex `bearer_token_env_var`、`env_http_headers` / OpenCode `{env:VAR}` 三种写法，明文回退时要求告知「配置文件含密钥、别提交 git、收紧权限」，并给匿名模式出口与 `mcp list` 验证步骤；执行要求第 3 条同步。
