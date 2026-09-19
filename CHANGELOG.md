@@ -5,6 +5,7 @@
 
 ## 2026-09-20
 
+- **00:52** `test:` 修掉本机长期红的 `test_shellcheck_runs_when_available`：它只判 shellcheck 是否存在，而 L1 的 `.sh` 分支以 bash 为准，本机缺 bash 时根本不进入 shellcheck，断言必然落空——补上 bash 前置并说明理由。
 - **00:32** `docs:` yyyyy 收敛为验收闸门：新增「边界」节（只判能不能收/能不能发，需要深审时提示用户手动 `/code-review-expert`，不调用其它技能，不翻历史旧账），第 2 条收窄为「只拦明显问题」；新增六条闸门检查（证据锚定、配套同步、依赖与锁文件、发布面、静默破坏类疑点不得默默放过、测试与 linter 报过的不重复挑），总结须写明覆盖/跳过/待确认；description 与 README 技能表同步。
 - **00:21** `docs:` code-review-expert 吸收外部开源 CR 工具的评审纪律（仅借鉴工程判断，文本与示例均自研、无逐字引用）：四维度扩为六维度（新增「性能与资源成本」「兼容性与行为变更」，维度一补依赖锁文件 / CI 权限 / 配置漂移），每个维度补「不报」豁免；门禁补四条口径（受保护主题不适用证据不全即丢弃、先落实事实来源、低价值≠错误、不重复静态工具结论）；流程补只评新增行 / 默认不读的文件 / 语义分组 / 大改动先风险定位（≥50 行单文件或 ≥100 行一组）/ 超预算受控截断须显式声明；定级补线上兼容破坏 Blocker、性能与依赖 Major、受保护主题五类清单与「不可验证≠错误」。
 - **00:12** `docs:` install-prompt 第 6 步补 DSH 的变量引用写法与两个实测坑：`~/.dsh/cordis.patch.yml` 用 ``Authorization: !!js "`Bearer ${process.env.ANYSEARCH_TOKEN}`"``（外层双引号必须保留，漏掉会让整个 patch 层解析失败、该层所有 MCP 行一起消失）；先设变量再重启 dsh（运行中热重载只会算出 `Bearer undefined`）；验收不能用 shell echo（DSH 按 `/KEY|PASSWORD|SECRET|TOKEN/i` 从子进程擦除这类变量），改用 `dsh --profile web --dump-config` 搜不到 `as_sk_` 加实际搜一次，写坏了用 `--dump-default-config` 诊断；变量名统一为 `ANYSEARCH_TOKEN`。
@@ -16,7 +17,7 @@
 
 ## 2026-09-17
 
-- **22:20** `docs:` install-prompt 默认绑定 agent 由 zcode 改为 claude-code / codex / opencode（opencode 经 CLI 注册表核实为合法键）。
+- **22:20** `docs:` install-prompt 默认绑定 agent 定为 claude-code / codex / opencode（opencode 经 CLI 注册表核实为合法键）。
 - **22:16** `fix:` change-linter 修复 per-file-ignores 假阳性：校验子进程改用配置所在目录为工作目录并传相对路径（ruff 按相对工作目录匹配豁免规则，绝对路径 + cwd 偏移会让 `tests/**` 之类豁免静默失效）；新增回归用例覆盖「项目外调用」与「子目录调用」两场景；lint-levels.md 补行为说明。
 - **22:23** `docs:` 纠正 README 安装落点说明（此前误称全局安装都落 `~/.agents/skills/`）：命令式 `-g -a <agent>` 落在 agent 目录，交互式/多 agent 才走通用目录 + 链接布局；补 skills.sh 收录 404 说明；CONTRIBUTING 补 CHANGELOG 条目格式（日期段 + HH:MM + 前缀）。
 - **21:51** `docs:` 模板再次同步作者全局规范（4862 → 5450 字符）：新增「求简优先序」（YAGNI→复用→标准库→原生→已装依赖→一行→最小实现）、「Bug 修复追根因」（先 grep 调用者、共享路径单点修复）、「验证分工」补最小可运行自检要求、「严格禁止」补禁无边界抽象条；细化推荐标注规则、授权提交流程措辞、CR 授权表述与「求简不丢信息」的删解释原则。

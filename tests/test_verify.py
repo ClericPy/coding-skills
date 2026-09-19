@@ -251,9 +251,16 @@ class VerifyCliTest(CliTestCase):
         self.assertNotIn("S101", out, out)
 
     def test_shellcheck_runs_when_available(self) -> None:
-        """有 .sh 改动且本机装了 shellcheck 时加跑静态检查：未引号变量要被抓到。"""
+        """有 .sh 改动且本机装了 shellcheck 时加跑静态检查：未引号变量要被抓到。
+
+        shellcheck 是 bash -n 之外的可选增强，而 L1 的 .sh 分支仍以 bash 为准：
+        本机缺 bash 时整个 Level 会判为未校验、根本不进入 shellcheck，因此这里
+        必须两个前置都在才跑，否则断言落空（见 verify.py 的 _build_shell_checks）。
+        """
         if not shutil.which("shellcheck"):
             self.skipTest("本机未安装 shellcheck")
+        if not shutil.which("bash"):
+            self.skipTest("本机未安装 bash，L1 的 .sh 分支不会进入 shellcheck")
         repo = self.make_repo({"run.sh": "#!/usr/bin/env bash\nrm -rf $1\n"})
         code, out = self.run_cli(VERIFY, repo, "--level", "L1")
         self.assertEqual(code, 1)
@@ -271,7 +278,7 @@ class VerifyCliTest(CliTestCase):
     def test_excludes_own_installed_copy(self) -> None:
         """技能装进项目后，它自身的副本不该被当成用户的改动。"""
         repo = self.make_repo({"app.py": CLEAN_PY})
-        skill_dir = repo / ".zcode" / "skills" / "change-linter"
+        skill_dir = repo / ".claude" / "skills" / "change-linter"
         (skill_dir / "scripts").mkdir(parents=True)
         installed = skill_dir / "scripts" / "verify.py"
         shutil.copy(VERIFY, installed)
