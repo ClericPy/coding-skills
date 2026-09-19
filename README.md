@@ -51,7 +51,7 @@ npx skills add ClericPy/coding-skills -a zcode --skill change-linter -y
 | [**ppppp**](./skills/ppppp/SKILL.md) | 提示词调制器：按场景判定表匹配 10 个模板并填充占位符，只输出调制后的提示词，不回答原问题 | `/ppppp` | 仅手动 |
 | [**ttttt**](./skills/ttttt/SKILL.md) | ⚠️ 接管 tmux 会话执行终端操作：「看-想-做」闭环，含 base64 防转义通道与破坏性命令确认 | `/ttttt` | 仅手动 |
 | [**wwwww**](./skills/wwwww/SKILL.md) | 执行 openspec change 全流程：Worktree 隔离 → 实现自测 → 验收 → 存档 → 提交 → rebase + merge --ff-only 合并 | `/wwwww` | 仅手动 |
-| [**yyyyy**](./skills/yyyyy/SKILL.md) | 验收进行中的变更（spec 变更或 openspec change，自动判断）：文档代码对齐、测试全过，通过后存档清理 | `/yyyyy` | 仅手动 |
+| [**yyyyy**](./skills/yyyyy/SKILL.md) | 验收进行中的变更（spec 变更或 openspec change，自动判断）：文档代码对齐、测试全过、闸门检查（证据锚定 / 配套同步 / 依赖锁文件 / 发布面 / 静默破坏疑点），通过后存档清理。只做闸门，深审请手动 `/code-review-expert` | `/yyyyy` | 仅手动 |
 | [**code-review-expert**](./skills/code-review-expert/SKILL.md) | 资深架构师级 Code Review 与 Spec 验收：六维度审查（契约与环境、架构设计、健壮性与并发、可观测性、性能成本、向后兼容），仅报 ≥80% 置信度问题并分 Blocker/Major/Minor 三档 | `/code-review-expert` | 仅手动 |
 | [**change-linter**](./skills/change-linter/SKILL.md) | 改动 Python / Shell 后判定并执行 L1–L4 分级后置校验，并如实报告工具缺失导致的未校验缺口 | `/change-linter` | 可自动触发 |
 

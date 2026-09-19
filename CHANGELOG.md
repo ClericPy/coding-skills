@@ -5,6 +5,7 @@
 
 ## 2026-09-20
 
+- **00:32** `docs:` yyyyy 收敛为验收闸门：新增「边界」节（只判能不能收/能不能发，需要深审时提示用户手动 `/code-review-expert`，不调用其它技能，不翻历史旧账），第 2 条收窄为「只拦明显问题」；新增六条闸门检查（证据锚定、配套同步、依赖与锁文件、发布面、静默破坏类疑点不得默默放过、测试与 linter 报过的不重复挑），总结须写明覆盖/跳过/待确认；description 与 README 技能表同步。
 - **00:21** `docs:` code-review-expert 吸收外部开源 CR 工具的评审纪律（仅借鉴工程判断，文本与示例均自研、无逐字引用）：四维度扩为六维度（新增「性能与资源成本」「兼容性与行为变更」，维度一补依赖锁文件 / CI 权限 / 配置漂移），每个维度补「不报」豁免；门禁补四条口径（受保护主题不适用证据不全即丢弃、先落实事实来源、低价值≠错误、不重复静态工具结论）；流程补只评新增行 / 默认不读的文件 / 语义分组 / 大改动先风险定位（≥50 行单文件或 ≥100 行一组）/ 超预算受控截断须显式声明；定级补线上兼容破坏 Blocker、性能与依赖 Major、受保护主题五类清单与「不可验证≠错误」。
 - **00:12** `docs:` install-prompt 第 6 步补 DSH 的变量引用写法与两个实测坑：`~/.dsh/cordis.patch.yml` 用 ``Authorization: !!js "`Bearer ${process.env.ANYSEARCH_TOKEN}`"``（外层双引号必须保留，漏掉会让整个 patch 层解析失败、该层所有 MCP 行一起消失）；先设变量再重启 dsh（运行中热重载只会算出 `Bearer undefined`）；验收不能用 shell echo（DSH 按 `/KEY|PASSWORD|SECRET|TOKEN/i` 从子进程擦除这类变量），改用 `dsh --profile web --dump-config` 搜不到 `as_sk_` 加实际搜一次，写坏了用 `--dump-default-config` 诊断；变量名统一为 `ANYSEARCH_TOKEN`。
 
