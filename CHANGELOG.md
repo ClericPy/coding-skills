@@ -5,6 +5,8 @@
 
 ## 2026-09-20
 
+- **21:02** `docs:` install-prompt 三处补强：①开头加「先查已装清单、已装且能用的条目直接跳过」，执行要求第 6 条改为可执行的「先查再装」检查命令；②第 0 步补 DSH 说明——它不是 `--agent` 合法取值（实测 `-a dsh` 报 `Invalid agents: dsh`），DSH 固定读 `~/.agents/skills`，对应 CLI 的 `universal` 键（实测 `-a universal` 落点 `.agents/skills`），或走多 agent 布局的实体目录；③第 5 步 chrome-devtools-mcp 改为「只装不启用」（DSH 用 `disabled: true`，无禁用开关的 harness 写到备用位置，真启用时优先 `--slim`），执行要求新增第 7 条。
+
 - **00:55** `docs:` 全仓去掉 ZCode 提及：README（简介、英文段、Quickstart 安装示例改用 `<agent>` 占位并给出 claude-code / codex / opencode 取值、安装落点、AGENTS.md 落点）、CONTRIBUTING（校验器扩展字段说明、脚本调用约定注释）、install-prompt（AnySearch 回退处改为「有些 harness」）、CHANGELOG 历史条目改写；测试夹具改用 `-a claude-code` 与 `.claude/skills`（`claude-code` 为 CLI 认的键，安装回归 6 例实测通过）。功能性回退变量 `ZCODE_SKILL_DIR` 按决定保留，仅去掉其解释文字里的 ZCode 表述。
 - **00:52** `test:` 修掉本机长期红的 `test_shellcheck_runs_when_available`：它只判 shellcheck 是否存在，而 L1 的 `.sh` 分支以 bash 为准，本机缺 bash 时根本不进入 shellcheck，断言必然落空——补上 bash 前置并说明理由。
 - **00:32** `docs:` yyyyy 收敛为验收闸门：新增「边界」节（只判能不能收/能不能发，需要深审时提示用户手动 `/code-review-expert`，不调用其它技能，不翻历史旧账），第 2 条收窄为「只拦明显问题」；新增六条闸门检查（证据锚定、配套同步、依赖与锁文件、发布面、静默破坏类疑点不得默默放过、测试与 linter 报过的不重复挑），总结须写明覆盖/跳过/待确认；description 与 README 技能表同步。

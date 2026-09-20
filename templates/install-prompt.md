@@ -2,6 +2,7 @@
 
 > 用法：把本文件整段粘贴给 AI 编程工具（claude-code / codex / opencode 等），由它按下面步骤逐项执行。
 > 所有命令里出现的 `<AGENTS>` 都来自你第 0 步选出来的智能体列表，多 agent 时展开成多个 `--agent` 参数。
+> **动手前先查一遍已装清单**（`npx skills list -g`、各 harness 的 `mcp list` / `--dump-config`、`<工具> --version`）：**已经装好且能用的条目直接跳过**，别重装、别覆盖我本地的配置。
 
 ## 分类总览（先分清类型，别装错地方）
 
@@ -32,6 +33,8 @@
 - 再给一个**自定义输入框**，允许我手填其它智能体名。
 - 如果我在自定义框里输入的内容**包含空格**（例如 `cursor opencode`），就按多个 agent 处理，按空格拆开。
 - 把最终确认的 agent 列表记为 `AGENTS`（例如 `claude-code codex opencode`）。
+
+> **DSH 不要往这个列表里填。** 它不是 `--agent` 的合法取值（实测 `-a dsh` 报 `Invalid agents: dsh`，CLI 的合法列表里也没有它）。DSH 固定读 `~/.agents/skills`（项目级读 `.agents/skills`），对应 CLI 的 `universal` 键：要让它用上，就写 `--agent universal`；或者装多个 agent 时实体本身就落在 `.agents/skills`、其余目录放链接，DSH 一样能读到。**别为了 DSH 猜一个 `dsh` 参数**。
 
 **后续所有 `--agent` 命令都按这个列表展开**：只绑一个就写 `--agent opencode`；绑多个就**重复写多个 `--agent`**，例如：
 
@@ -131,6 +134,11 @@ npx -y chrome-devtools-mcp@latest --autoConnect
   }
 }
 ```
+
+> ⚠️ **装好但默认不要启用。** 它的工具 schema 很占上下文（同类先例：agent-browser 的 29 个 schema 约 16k tokens/请求），本轮只把命令与配置**准备好**，不要写进当前生效的 MCP 配置：
+> - **DSH**：给 entry 加 `disabled: true`（也接受 `!!js` 条件表达式），要用的那天再打开；
+> - **没有「装了不启用」开关的 harness**：把配置片段写到备用位置（注释块或 `<name>.example.json`）并告诉我放在哪，不要写进生效配置、更不要顺手替我启用；
+> - 真要启用时优先带 `--slim`（只暴露导航 / 脚本执行 / 截图 3 个工具），别一上来就全量。
 
 ---
 
@@ -331,4 +339,5 @@ npx skills add JuliusBrussee/caveman --skill caveman --agent <AGENTS> -g -y
 3. 需要 key 的只有第 6 步 anysearch：**停下来弹窗问我要 key**，拿到后**先按目标 agent 的语法写环境变量引用**，该 agent 不支持（HTTP MCP 只收静态 headers 时）才退回明文并告知我「配置文件已含密钥」；任何情况下都不要留着 `<ANYSEARCH_API_KEY>` 占位符就当完成。
 4. 每个条目装完用一行输出告诉我结果（成功 / 失败 / 已存在），失败的把报错贴出来，不要静默跳过。
 5. 命令以本文件给出的为准，不要自行换成别的工具或参数。
-6. 注意有些技能或工具已经安装过了，不要出现重复。
+6. **先查再装**：每条动手前先确认是否已经装过（`npx skills list -g` / `npx skills list`、`claude mcp list`、`dsh --profile web --dump-config`、`<工具> --version`）；已装且能用的**直接跳过**，只在结果里标一句「已存在」，不要重装、不要覆盖我的本地配置。
+7. **chrome-devtools-mcp 只装不启用**：命令与配置准备好即可，别写进生效配置、别替我启用（见第 5 步）。
