@@ -23,6 +23,8 @@
 # ---- L1 ----
 ruff check --select E,F,W,I,S,PERF --ignore W291,W293,E203 --line-length 120 <FILES>
 ruff format --check <FILES>
+ruff check --select C901 --config lint.mccabe.max-complexity=8 --output-format concise <FILES>   # 复杂度，见下
+bash -n <SH_FILES>
 
 # ---- L2 ----
 ty check <FILES>
@@ -34,6 +36,20 @@ pyright <FILES>
 # ---- L4 ----
 mypy --strict <FILES>
 ```
+
+### 复杂度（C901）双阈值
+
+随 ruff 一起跑，阈值由脚本二次裁决，**不交给 ruff 的退出码**：
+
+| 函数归属 | 阈值 | 判定 |
+| --- | --- | --- |
+| 本次改动碰过的函数（def 行落在新增/修改行区间内） | **>8** | 拦下 |
+| 同一次改动里没碰过的存量函数 | **>12** | 拦下 |
+| 存量函数落在 8~12 | — | 放过，报告里记为「存量容忍」 |
+
+- 区间来自 `git diff -U0 HEAD` 的块头；未跟踪的新文件整file按新代码算。
+- 取不到 diff（非 git 仓库、路径不在仓库内、改动已提交）时**一律按存量口径 12**，避免把老函数误判成新代码制造噪音。
+- 该检查独立成一条 `complexity` 记录，与 ruff 的风格检查分开显示，通过时也会打印「存量容忍 N 处」。
 
 ## 工具安装（仅 uv）
 
@@ -62,7 +78,8 @@ uv run --no-project "$SKILL_DIR/scripts/verify.py" --level L2 --install-missing 
 ```
 
 - **`--project-scope`**：类型工具（ty/pyrefly/pyright/mypy）的检查对象从改动文件扩大到整个项目目录，ruff 与 `bash -n` 仍只查改动文件。用于 L3/L4 公共接口 / 跨模块变更——单文件检查抓不到「改签名破坏下游调用方」；会连带扫出项目存量类型错误，汇报时须区分存量与本次引入。
-- **ruff 兜底参数**：`--select/--ignore/--line-length` 仅在项目未自带 ruff 配置时传入；项目根有 `pyproject.toml`（含 `[tool.ruff]`）或 `ruff.toml` 时自动以项目配置为准，脚本会显式打印这一让位。
+- **复杂度检查**：随 ruff 一起跑（L1 起），阈值与豁免规则见上方「复杂度（C901）双阈值」。
+- **ruff 兜底参数**：`--select/--ignore/--line-length` 仅在项目未自带 ruff 配置时传入；项目根有 `pyproject.toml`（含 `[tool.ruff]`）或 `ruff.toml` 时自动以项目配置为准，脚本会显式打印这一让位。**复杂度那条不受此让位影响**：它固定带 `--select C901` 与 `max-complexity`，否则项目配置一存在就会查不到复杂度。
 
 `uv` 自带 Python，因此不依赖系统上有没有 `python`，**也不需要为不同系统各写一个启动器**。只有 uv 不可用时才退回系统解释器：Windows 优先 `py -3`（`python` 常是 Microsoft Store 占位程序，存在 ≠ 可用），其他系统用 `python3`。
 
@@ -80,5 +97,6 @@ uv run --no-project "$SKILL_DIR/scripts/verify.py" --level L2 --install-missing 
 | `ruff` | **硬失败**，退出码 1，不得降级放过；此时改用 Python 自带的 `py_compile` 保住语法底线 |
 | `ty` / `pyrefly` / `pyright` / `mypy` | 该级降级执行，显式打印「该级未真正校验」 |
 | `uv` | 报告「缺少 uv，无法安装校验工具链」，不尝试安装 |
-| `bash`（存在 `.sh` 改动时） | 该文件跳过 `bash -n` 并显式标注 |
+| `bash`（存在 `.sh` 改动时） | 先按 PATH 探测，找不到再回退到 Git for Windows 的常见安装位置（`%ProgramFiles%\Git\bin\bash.exe` 等）；两处都没有时该级判为未校验并显式标注「没有任何校验被真实执行」 |
 | `shellcheck`（可选增强） | 存在则对 `.sh` 加跑静态检查（发现即判失败）；缺失仅提示，不影响通过与否，也不自动安装。补装方式：`uv tool install shellcheck-py`（PyPI 再打包，自带官方二进制，装完可执行名是 `shellcheck`） |
+| `--files` 指定的路径不存在 | 预检后直接报「--files 找不到文件」并给出「相对当前工作目录解析」的提示，不把 `E902 系统找不到指定的文件` 这种误导读者的报错抛给用户 |

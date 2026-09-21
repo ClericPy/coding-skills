@@ -3,6 +3,10 @@
 本项目所有可见变更按时间倒序记录于此。格式参照 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 条目以 `HH:MM` 标注提交时间，未提交的改动先归入「未发布」，随当次提交并入日期段落。
 
+## 2026-09-21
+
+- **22:45** `feat:` change-linter 三项增强 + 全链有效性实测：①新增 C901 复杂度检查（L1 起随 ruff 跑，独立成 `complexity` 记录）——**本次改动碰过的函数卡 8，同一次改动没碰过的存量函数放宽到 12**，区间取自 `git diff -U0 HEAD`，未跟踪文件整file算新代码，取不到 diff 时按存量口径；阈值判定在脚本内完成，不交给 ruff 退出码，通过时也打印「存量容忍 N 处」。②`bash` 探测加 Git for Windows 常见路径回退（`%ProgramFiles%\Git\bin\bash.exe` 等）——本机 Git 装了但 bin 不在 PATH，此前所有 `.sh` 改动都是「无法校验」，shellcheck 白装。③`--files` 加存在性预检，不再把 `E902 系统找不到指定的文件` 抛给用户。测试补 5 个用例（复杂度三态、`--files` 预检、bash 回退探测），`tests/test_verify.py` 23 例全绿，其中 shellcheck 用例从「永久 skip」变为真跑。新规则首先抓到脚本自身：`verify.py` 的 `_changed_line_ranges`（10）与 `_finalize_complexity`（9）超限，已拆出 `_spans_from_diff` / `_file_spans` / `_parse_complexity_findings` / `_classify_complexity` 四个小函数，复检 0 处新代码超限。
+
 ## 2026-09-20
 
 - **21:02** `docs:` install-prompt 三处补强：①开头加「先查已装清单、已装且能用的条目直接跳过」，执行要求第 6 条改为可执行的「先查再装」检查命令；②第 0 步补 DSH 说明——它不是 `--agent` 合法取值（实测 `-a dsh` 报 `Invalid agents: dsh`），DSH 固定读 `~/.agents/skills`，对应 CLI 的 `universal` 键（实测 `-a universal` 落点 `.agents/skills`），或走多 agent 布局的实体目录；③第 5 步 chrome-devtools-mcp 改为「只装不启用」（DSH 用 `disabled: true`，无禁用开关的 harness 写到备用位置，真启用时优先 `--slim`），执行要求新增第 7 条。

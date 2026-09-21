@@ -6,6 +6,10 @@
 级别判定不属本脚本职责 —— 脚本只做机械部分：发现改动文件、探测工具、
 并行执行、汇总结果与退出码。
 
+复杂度（C901）随 ruff 一起跑，但阈值分两档：本次改动碰过的函数按 8 卡，
+同一次改动里没碰过的存量函数放宽到 12；阈值判定在脚本内完成，不交给
+ruff 的退出码。
+
 退出码：
     0  该 Level 的全部校验都真实执行且通过；或改动仅为删除文件（无适用校验对象）
     1  存在校验失败，或存在未真正执行的校验（缺工具 / 无适用改动）
@@ -16,6 +20,7 @@ from __future__ import annotations
 import argparse
 import io
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -80,6 +85,27 @@ RUFF_LINE_LENGTH = "120"
 RUFF_CONFIG_NAMES: tuple[str, ...] = ("ruff.toml", ".ruff.toml")
 PYPROJECT_NAME = "pyproject.toml"
 RUFF_SECTION_MARK = "[tool.ruff"
+
+# C901 复杂度双阈值：本次改动碰过的函数按新代码标准卡，存量函数放宽
+COMPLEXITY_LABEL = "complexity"
+COMPLEXITY_NEW_LIMIT = 8
+COMPLEXITY_LEGACY_LIMIT = 12
+COMPLEXITY_RULE = "C901"
+
+# bash 不在 PATH 时的回退位置：Git for Windows 自带 bash，但默认不写进 PATH
+BASH_FALLBACK_PARTS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("ProgramFiles", ("Git", "bin", "bash.exe")),
+    ("ProgramFiles", ("Git", "usr", "bin", "bash.exe")),
+    ("ProgramFiles(x86)", ("Git", "bin", "bash.exe")),
+    ("LOCALAPPDATA", ("Programs", "Git", "bin", "bash.exe")),
+)
+
+# ruff concise 输出：<path>:<line>:<col>: C901 `name` is too complex (N > limit)
+C901_LINE = re.compile(
+    r"^(?P<path>.+):(?P<line>\d+):\d+: C901 .+ is too complex \((?P<value>\d+) > \d+\)$"
+)
+# 统一 diff 的块头；-U0 时新增行区间就是 [start, start+count-1]
+HUNK_HEADER = re.compile(r"^@@ -\d+(?:,\d+)? \+(?P<start>\d+)(?:,(?P<count>\d+))? @@")
 
 CHECK_TIMEOUT_SECONDS = 900
 MAX_WORKERS = 8
@@ -152,9 +178,28 @@ def _run(
     return RunResult(code=proc.returncode, stdout=proc.stdout, stderr=proc.stderr)
 
 
+def _bash_fallback() -> str | None:
+    """PATH 上没有 bash 时，回退到 Git for Windows 的常见安装位置。
+
+    Git for Windows 默认只把 cmd/ 加进 PATH，bin/bash.exe 往往不在其中；
+    直接判「未安装」会让所有 .sh 改动变成不可校验，故按已知位置探测。
+    """
+    for env_name, parts in BASH_FALLBACK_PARTS:
+        base = os.environ.get(env_name)
+        if not base:
+            continue
+        candidate = Path(base).joinpath(*parts)
+        if candidate.is_file():
+            return str(candidate)
+    return None
+
+
 def _tool_path(name: str) -> str | None:
     """解析工具的可执行文件绝对路径，未安装时返回 None。"""
-    return shutil.which(name)
+    found = shutil.which(name)
+    if found is None and name == SHELL_TOOL:
+        found = _bash_fallback()
+    return found
 
 
 def _probe(tools: tuple[str, ...]) -> dict[str, str | None]:
@@ -382,6 +427,30 @@ def _build_shell_checks(sh_files: list[str]) -> list[Check]:
     return checks
 
 
+def _build_complexity_check(ruff: str, py_files: list[str], fast: bool) -> Check:
+    """C901 复杂度：先按新代码阈值跑，超出的部分再由 diff 区分存量与新增。
+
+    阈值判定不能交给 ruff 的退出码：存量 8~12 的函数要放过，只有新代码 >8
+    或存量 >12 才算问题，因此单独成一条 check 并在结果里二次裁决。
+    """
+    nocache = () if fast else ("--no-cache",)
+    return _make_check(
+        COMPLEXITY_LABEL,
+        ruff,
+        (
+            "check",
+            "--select",
+            COMPLEXITY_RULE,
+            "--config",
+            f"lint.mccabe.max-complexity={COMPLEXITY_NEW_LIMIT}",
+            "--output-format",
+            "concise",
+            *nocache,
+            *py_files,
+        ),
+    )
+
+
 def _build_checks(
     level: str,
     py_files: list[str],
@@ -398,6 +467,7 @@ def _build_checks(
     ruff = exe.get("ruff")
     if py_files and ruff:
         checks.extend(_build_ruff_checks(ruff, py_files, fast, respect_ruff_config))
+        checks.append(_build_complexity_check(ruff, py_files, fast))
         checks.extend(
             _build_type_checks(
                 level, py_files, exe, temp_root, fast, cwd, project_scope
@@ -408,6 +478,162 @@ def _build_checks(
         checks.append(_make_py_compile_check(py_files, temp_root))
     checks.extend(_build_shell_checks(sh_files))
     return checks
+
+
+def _is_untracked(git_exe: str, repo: Path, relative: str) -> bool:
+    """文件是否尚未进入 HEAD；新增/未跟踪文件整file都算本次改动。"""
+    probe = _run((git_exe, "cat-file", "-e", f"HEAD:{relative}"), repo)
+    return probe.code != 0
+
+
+def _spans_from_diff(git_exe: str, repo: Path, relative: str) -> list[tuple[int, int]]:
+    """解析 `git diff -U0` 的块头，得到该文件的新增行区间。"""
+    spans: list[tuple[int, int]] = []
+    diff = _git_lines(
+        git_exe, ("diff", "-U0", "--no-color", "HEAD", "--", relative), repo
+    )
+    for line in diff:
+        match = HUNK_HEADER.match(line)
+        if match is None:
+            continue
+        start = int(match.group("start"))
+        count = int(match.group("count") or 1)
+        if count > 0:
+            spans.append((start, start + count - 1))
+    return spans
+
+
+def _file_spans(
+    cwd: Path, git_exe: str, repo: Path, name: str
+) -> list[tuple[int, int]]:
+    """单个文件的改动行区间；不在仓库内返回空，未跟踪文件整file算改动。"""
+    absolute = Path(name)
+    if not absolute.is_absolute():
+        absolute = (cwd / name).resolve()
+    try:
+        relative = absolute.relative_to(repo).as_posix()
+    except ValueError:
+        return []
+    spans = _spans_from_diff(git_exe, repo, relative)
+    if not spans and _is_untracked(git_exe, repo, relative):
+        return [(1, sys.maxsize)]
+    return spans
+
+
+def _changed_line_ranges(
+    cwd: Path, git_exe: str | None, files: list[str]
+) -> dict[str, list[tuple[int, int]]]:
+    """取每个文件本次新增/修改的行区间，键为传入的路径原文（与 ruff 输出一致）。
+
+    取不到 diff（非 git、路径不在仓库内、改动已提交）时返回空区间，调用方据此
+    退化为存量口径，不会误判成"新代码"。
+    """
+    if git_exe is None or not files:
+        return {}
+    top_level = _git_lines(git_exe, ("rev-parse", "--show-toplevel"), cwd)
+    if not top_level:
+        return {}
+    repo = Path(top_level[0])
+    return {name: _file_spans(cwd, git_exe, repo, name) for name in files}
+
+
+def _render_complexity(
+    new_hits: list[tuple[str, int, int]],
+    legacy_hits: list[tuple[str, int, int]],
+    tolerated: int,
+) -> str:
+    """把复杂度裁决结果渲染成固定三段。"""
+    lines = [
+        f"新代码超限（>{COMPLEXITY_NEW_LIMIT}）{len(new_hits)} 处"
+        + (
+            ": "
+            + "；".join(
+                f"{path}:{line} 复杂度 {value}" for path, line, value in new_hits
+            )
+            if new_hits
+            else ""
+        ),
+        f"存量超限（>{COMPLEXITY_LEGACY_LIMIT}）{len(legacy_hits)} 处"
+        + (
+            ": "
+            + "；".join(
+                f"{path}:{line} 复杂度 {value}" for path, line, value in legacy_hits
+            )
+            if legacy_hits
+            else ""
+        ),
+        f"存量容忍（{COMPLEXITY_NEW_LIMIT}~{COMPLEXITY_LEGACY_LIMIT}）{tolerated} 处",
+    ]
+    return "\n".join(lines)
+
+
+def _parse_complexity_findings(detail: str) -> list[tuple[str, int, int]]:
+    """从 ruff concise 输出里取出 (路径, 行号, 复杂度)。"""
+    findings: list[tuple[str, int, int]] = []
+    for line in detail.splitlines():
+        match = C901_LINE.match(line.strip())
+        if match is not None:
+            findings.append(
+                (
+                    match.group("path"),
+                    int(match.group("line")),
+                    int(match.group("value")),
+                )
+            )
+    return findings
+
+
+def _classify_complexity(
+    findings: list[tuple[str, int, int]],
+    ranges: dict[str, list[tuple[int, int]]],
+) -> tuple[list[tuple[str, int, int]], list[tuple[str, int, int]], int]:
+    """把命中分成 (新代码超限, 存量超限, 存量容忍数)。"""
+    new_hits: list[tuple[str, int, int]] = []
+    legacy_hits: list[tuple[str, int, int]] = []
+    tolerated = 0
+    for path, line, value in findings:
+        spans = ranges.get(path, [])
+        if any(start <= line <= end for start, end in spans):
+            new_hits.append((path, line, value))
+        elif value > COMPLEXITY_LEGACY_LIMIT:
+            legacy_hits.append((path, line, value))
+        else:
+            tolerated += 1
+    return new_hits, legacy_hits, tolerated
+
+
+def _finalize_complexity(outcome: CheckOutcome, cwd: Path) -> CheckOutcome:
+    """按「新代码 >8 / 存量 >12」重判 C901 结果，并替换成可读的三段式输出。
+
+    改动过的函数按新代码阈值，同一次改动里没碰过的存量函数放宽到 12；
+    取不到 diff 信息时一律按存量口径，避免把老函数误判成新代码而制造噪音。
+    """
+    findings = _parse_complexity_findings(outcome.detail)
+    if not findings:
+        if outcome.passed:
+            # 无命中时 ruff 的成功输出（All checks passed!）对读者没有信息量
+            return CheckOutcome(
+                check=outcome.check,
+                passed=True,
+                detail=(
+                    f"无超限（新代码 >{COMPLEXITY_NEW_LIMIT} / "
+                    f"存量 >{COMPLEXITY_LEGACY_LIMIT}）"
+                ),
+            )
+        # ruff 自身报错（例如文件找不到）：原样保留，别把真实错误吞掉
+        return outcome
+    ranges = _changed_line_ranges(
+        cwd, _tool_path(GIT), [path for path, _, _ in findings]
+    )
+    new_hits, legacy_hits, tolerated = _classify_complexity(findings, ranges)
+    detail = _render_complexity(new_hits, legacy_hits, tolerated)
+    if tolerated and not new_hits and not legacy_hits:
+        detail += "\n存量函数放宽到 12；改动过的函数卡 8"
+    return CheckOutcome(
+        check=outcome.check,
+        passed=not (new_hits or legacy_hits),
+        detail=detail,
+    )
 
 
 def _execute(check: Check, cwd: Path) -> CheckOutcome:
@@ -460,6 +686,10 @@ def _report(
     for outcome in outcomes:
         if not outcome.passed:
             _print_outcome(outcome)
+        elif outcome.check.tool == COMPLEXITY_LABEL:
+            # 通过时也打印：让「存量容忍了几处」可见，否则放宽口径等于隐形
+            print(f"\n--- {outcome.check.tool} ---")
+            print(outcome.detail or "(无输出)")
     missing = [*hard, *degraded]
     uv_missing = [tool for tool in missing if tool not in NON_UV_TOOLS]
     if uv_missing:
@@ -585,6 +815,11 @@ def _print_mode_notes(
         print(
             "可选增强: shellcheck 未安装，shell 校验仅 bash -n（不影响判定，可自行安装后重跑）"
         )
+    if sh_files and shutil.which(SHELL_TOOL) is None and _tool_path(SHELL_TOOL):
+        print(
+            f"bash 不在 PATH，已回退到 {_tool_path(SHELL_TOOL)}"
+            "（把该目录加进 PATH 可让其他工具也用上）"
+        )
     config_root = _config_root_for(cwd, py_files)
     if config_root is not None:
         print(
@@ -622,9 +857,13 @@ def _execute_checks(
             respect_ruff_config,
         )
         with ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
-            return list(pool.map(partial(_execute, cwd=cwd), checks))
+            outcomes = list(pool.map(partial(_execute, cwd=cwd), checks))
     finally:
         shutil.rmtree(temp_root, ignore_errors=True)
+    return [
+        _finalize_complexity(item, cwd) if item.check.tool == COMPLEXITY_LABEL else item
+        for item in outcomes
+    ]
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -636,6 +875,14 @@ def main(argv: list[str] | None = None) -> int:
     if args.probe:
         _print_probe(_probe(PROBE_TOOLS))
         return 0
+
+    if args.files:
+        absent = [name for name in args.files if not (cwd / name).exists()]
+        if absent:
+            print(f"--files 找不到文件: {', '.join(absent)}")
+            print(f"--files 相对当前工作目录解析（{cwd}），也可直接传绝对路径")
+            print("verify: 未校验 — 不得视为已通过")
+            return 1
 
     py_files, sh_files, skipped = _collect_files(args, cwd, _tool_path(GIT))
     if not args.files:

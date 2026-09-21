@@ -11,6 +11,7 @@
 
 from __future__ import annotations
 
+import importlib.util
 import os
 import shutil
 import subprocess
@@ -18,6 +19,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 VERIFY = REPO_ROOT / "skills" / "change-linter" / "scripts" / "verify.py"
@@ -27,6 +29,46 @@ GIT = shutil.which("git") or ""
 CLEAN_PY = "x = 1\n"
 BAD_PY = "import os\n\n\nx = 1\n"
 BAD_SYNTAX_PY = "def f(:\n    pass\n"
+
+# Git for Windows 自带 bash 但默认不写进 PATH；verify.py 会回退探测这些位置
+BASH_FALLBACK_PARTS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("ProgramFiles", ("Git", "bin", "bash.exe")),
+    ("ProgramFiles", ("Git", "usr", "bin", "bash.exe")),
+    ("ProgramFiles(x86)", ("Git", "bin", "bash.exe")),
+    ("LOCALAPPDATA", ("Programs", "Git", "bin", "bash.exe")),
+)
+
+
+def bash_available() -> bool:
+    """本机是否有可用的 bash（PATH 或 Git 安装目录）。"""
+    if shutil.which("bash"):
+        return True
+    for env_name, parts in BASH_FALLBACK_PARTS:
+        base = os.environ.get(env_name)
+        if base and (Path(base) / Path(*parts)).is_file():
+            return True
+    return False
+
+
+def branched_function(name: str, count: int) -> str:
+    """生成一个分支数可控的函数，用于复杂度阈值用例。"""
+    body = "".join(f"    if value == {i}:\n        return {i}\n" for i in range(count))
+    return f"def {name}(value: int) -> int:\n{body}    return -1\n"
+
+
+def load_verify_module():
+    """按路径加载 verify.py 供进程内断言（黑盒用例仍走子进程）。
+
+    必须先注册进 sys.modules：dataclass 装饰器会在装饰期回查 sys.modules[__module__]，
+    未注册时报 'NoneType' object has no attribute '__dict__'。
+    """
+    spec = importlib.util.spec_from_file_location("change_linter_verify", VERIFY)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"无法加载 {VERIFY}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
 
 
 class CliTestCase(unittest.TestCase):
@@ -55,6 +97,21 @@ class CliTestCase(unittest.TestCase):
         )
         return proc.returncode, proc.stdout + proc.stderr
 
+    def commit_all(self, repo: Path) -> None:
+        """把当前内容提交成基线，后续改动才会被 git diff 看见。"""
+        subprocess.run(  # noqa: S603
+            [GIT, "-c", "user.email=t@t", "-c", "user.name=t", "add", "-A"],
+            cwd=str(repo),
+            capture_output=True,
+            check=True,
+        )
+        subprocess.run(  # noqa: S603
+            [GIT, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "base"],
+            cwd=str(repo),
+            capture_output=True,
+            check=True,
+        )
+
     def make_repo(self, files: dict[str, str], name: str = "repo") -> Path:
         """建一个 git 仓库，并按 {文件名: 内容} 写入文件。
 
@@ -66,7 +123,9 @@ class CliTestCase(unittest.TestCase):
             [GIT, "init", "-q"], cwd=str(repo), capture_output=True, check=True
         )
         for filename, content in files.items():
-            (repo / filename).write_text(content, encoding="utf-8")
+            # 显式 LF：Windows 上默认 write_text 会写 CRLF，ruff format 会因此要求重排，
+            # 把「格式检查」变成干扰项
+            (repo / filename).write_text(content, encoding="utf-8", newline="\n")
         return repo
 
     def empty_path_dir(self) -> str:
@@ -254,13 +313,13 @@ class VerifyCliTest(CliTestCase):
         """有 .sh 改动且本机装了 shellcheck 时加跑静态检查：未引号变量要被抓到。
 
         shellcheck 是 bash -n 之外的可选增强，而 L1 的 .sh 分支仍以 bash 为准：
-        本机缺 bash 时整个 Level 会判为未校验、根本不进入 shellcheck，因此这里
-        必须两个前置都在才跑，否则断言落空（见 verify.py 的 _build_shell_checks）。
+        verify.py 会先按 PATH、再按 Git 安装目录探测 bash，两者都找不到时整个
+        Level 判为未校验、根本不进入 shellcheck，因此这里两个前置都在才跑。
         """
         if not shutil.which("shellcheck"):
             self.skipTest("本机未安装 shellcheck")
-        if not shutil.which("bash"):
-            self.skipTest("本机未安装 bash，L1 的 .sh 分支不会进入 shellcheck")
+        if not bash_available():
+            self.skipTest("本机没有可用 bash（PATH 与 Git 安装目录都没有）")
         repo = self.make_repo({"run.sh": "#!/usr/bin/env bash\nrm -rf $1\n"})
         code, out = self.run_cli(VERIFY, repo, "--level", "L1")
         self.assertEqual(code, 1)
@@ -285,6 +344,75 @@ class VerifyCliTest(CliTestCase):
         code, out = self.run_cli(installed, repo, "--level", "L1")
         self.assertIn("已排除本技能自身文件 1 个", out)
         self.assertEqual(code, 0)
+
+    def test_complexity_new_code_over_limit_fails(self) -> None:
+        """本次新增的函数按 8 卡：分支数 11 即超限。"""
+        repo = self.make_repo({"app.py": branched_function("f", 10)})
+        code, out = self.run_cli(VERIFY, repo, "--level", "L1", "--files", "app.py")
+        self.assertEqual(code, 1, out)
+        self.assertIn("新代码超限（>8）1 处", out)
+
+    def test_complexity_legacy_within_tolerance_passes(self) -> None:
+        """存量函数 8~12 放过：本次只碰了同文件里的另一个函数。"""
+        repo = self.make_repo({"app.py": branched_function("f", 10)})
+        self.commit_all(repo)
+        with (repo / "app.py").open("a", encoding="utf-8", newline="\n") as handle:
+            handle.write("\n\ndef touched(value: int) -> int:\n    return value\n")
+        code, out = self.run_cli(VERIFY, repo, "--level", "L1", "--files", "app.py")
+        self.assertEqual(code, 0, out)
+        self.assertIn("存量容忍（8~12）1 处", out)
+
+    def test_complexity_legacy_over_limit_fails(self) -> None:
+        """存量函数超过 12 仍要拦下。"""
+        repo = self.make_repo({"app.py": branched_function("f", 13)})
+        self.commit_all(repo)
+        with (repo / "app.py").open("a", encoding="utf-8", newline="\n") as handle:
+            handle.write("\n\ndef touched(value: int) -> int:\n    return value\n")
+        code, out = self.run_cli(VERIFY, repo, "--level", "L1", "--files", "app.py")
+        self.assertEqual(code, 1, out)
+        self.assertIn("存量超限（>12）1 处", out)
+
+    def test_files_path_is_prechecked(self) -> None:
+        """--files 按 cwd 解析：找不到时要说清并响亮失败，而不是让 ruff 报 E902。"""
+        repo = self.make_repo({"app.py": CLEAN_PY})
+        code, out = self.run_cli(VERIFY, repo, "--level", "L1", "--files", "nope.py")
+        self.assertEqual(code, 1, out)
+        self.assertIn("--files 找不到文件: nope.py", out)
+        self.assertIn("相对当前工作目录解析", out)
+
+    def test_bash_fallback_probes_git_install_locations(self) -> None:
+        """PATH 上没有 bash 时，按 Git for Windows 的常见位置回退探测。
+
+        直接对 verify.py 的探测函数做进程内验证：Windows 会强制还原 ProgramFiles，
+        子进程无法伪造该变量，所以这里改从可继承的 LOCALAPPDATA 切入。
+        """
+        if os.name != "nt":
+            self.skipTest("回退候选是 Windows 的 Git 安装位置")
+        verify = load_verify_module()
+        fake_home = self.tmp / "fake-home"
+        target = fake_home / "Programs" / "Git" / "bin" / "bash.exe"
+        target.parent.mkdir(parents=True)
+        target.write_bytes(b"")
+        # Windows 上 os.environ 的键是大写，过滤时不能按原样比对
+        skip = {"PROGRAMFILES", "PROGRAMFILES(X86)", "LOCALAPPDATA"}
+        patched = {
+            key: value for key, value in os.environ.items() if key.upper() not in skip
+        }
+        patched["LOCALAPPDATA"] = str(fake_home)
+        with mock.patch.dict(os.environ, patched, clear=True):
+            self.assertEqual(verify._bash_fallback(), str(target))
+
+    def test_probe_resolves_bash_without_path_entry(self) -> None:
+        """本机有 Git bash 时，--probe 必须解析出路径，而不是报「未安装」。"""
+        if not bash_available():
+            self.skipTest("本机没有可说清的 bash（PATH 与 Git 安装目录都没有）")
+        code, out = self.run_cli(VERIFY, self.tmp, "--probe")
+        self.assertEqual(code, 0, out)
+        bash_line = next(
+            (line for line in out.splitlines() if line.strip().startswith("bash")),
+            "",
+        )
+        self.assertNotIn("未安装", bash_line, out)
 
 
 @unittest.skipIf(not GIT, "需要 git 才能构造临时仓库")
