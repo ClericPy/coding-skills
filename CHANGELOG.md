@@ -6,6 +6,8 @@
 ## 2026-09-21
 
 - **22:45** `feat:` change-linter 三项增强 + 全链有效性实测：①新增 C901 复杂度检查（L1 起随 ruff 跑，独立成 `complexity` 记录）——**本次改动碰过的函数卡 8，同一次改动没碰过的存量函数放宽到 12**，区间取自 `git diff -U0 HEAD`，未跟踪文件整file算新代码，取不到 diff 时按存量口径；阈值判定在脚本内完成，不交给 ruff 退出码，通过时也打印「存量容忍 N 处」。②`bash` 探测加 Git for Windows 常见路径回退（`%ProgramFiles%\Git\bin\bash.exe` 等）——本机 Git 装了但 bin 不在 PATH，此前所有 `.sh` 改动都是「无法校验」，shellcheck 白装。③`--files` 加存在性预检，不再把 `E902 系统找不到指定的文件` 抛给用户。测试补 5 个用例（复杂度三态、`--files` 预检、bash 回退探测），`tests/test_verify.py` 23 例全绿，其中 shellcheck 用例从「永久 skip」变为真跑。新规则首先抓到脚本自身：`verify.py` 的 `_changed_line_ranges`（10）与 `_finalize_complexity`（9）超限，已拆出 `_spans_from_diff` / `_file_spans` / `_parse_complexity_findings` / `_classify_complexity` 四个小函数，复检 0 处新代码超限。
+- **22:45** `docs:` ccccc 提交粒度条由「不必拆太细」改为可判据的宁粗勿碎（同需求/同主题合成一次，判据是 reviewer 能否一次看懂，默认一个需求一次提交）；AGENTS §1「禁静默决策」补弹窗规则（弹窗只放一行内的简短选项，背景与细节先写进对话正文）。本地副本同文同步。
+- **22:07** `docs:` 模板 AGENTS 的「远程执行」由 434 字符长句改为触发式规则并压缩到 5 条判据（388 字符）：**指令含引号 / 反斜杠 / 换行 / `$` / 反引号 / `&&`·`|`·重定向 → 一律改走脚本文件**，只有无上述字符的单行只读命令可直接发；保留行尾 LF、退出码先取、非登录 shell 三条判据，删除 Cygwin 吞 CR 与 `MSYS_NO_PATHCONV` 等历史表述。§3 增「写文件行尾」（Python 写仓库文件须显式 `newline="\n"` 或 `write_bytes`，实测默认在 Windows 会把整文件翻成 CRLF）；§4 增「读文件编码」（PS 5.1 裸 `Get-Content` 按 ANSI 解码 UTF-8 无 BOM 会乱码吞行）。本地副本（`~/.dsh/AGENTS.md` 符号链接指向的 `CLAUDE.md`）同文同步，两份 SHA256 一致。
 
 ## 2026-09-20
 
