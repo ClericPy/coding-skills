@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import os
 import shutil
 import subprocess
@@ -413,6 +414,166 @@ class VerifyCliTest(CliTestCase):
             "",
         )
         self.assertNotIn("未安装", bash_line, out)
+
+
+def make_outcome(tool: str, detail: str, passed: bool = False):
+    """构造一条校验结果，供两个轴的进程内断言使用。"""
+    verify = load_verify_module()
+    check = verify.Check(tool=tool, label=tool, argv=(tool,))
+    return verify.CheckOutcome(check=check, passed=passed, detail=detail)
+
+
+@unittest.skipIf(not GIT, "需要 git 才能构造临时仓库")
+class AxisCliTest(CliTestCase):
+    """两个正交轴（--security / --deps）的接线与报告口径。"""
+
+    def test_axis_label_lists_enabled_axes(self) -> None:
+        """报告头带上轴标记，轴是否生效一目了然。"""
+        repo = self.make_repo(
+            {"app.py": CLEAN_PY, "requirements.txt": "requests==2.19.0\n"}
+        )
+        _, out = self.run_cli(VERIFY, repo, "--level", "L1", "--security", "--deps")
+        self.assertIn("后置校验 L1 + S + D", out)
+
+    def test_deps_without_source_is_reported_as_unverified(self) -> None:
+        """找不到依赖来源时必须报「未校验」：裸跑 pip-audit 会给出假绿。"""
+        repo = self.make_repo({"app.py": CLEAN_PY})
+        code, out = self.run_cli(VERIFY, repo, "--level", "L1", "--deps")
+        self.assertEqual(code, 1)
+        self.assertIn("依赖轴未校验", out)
+
+    def test_deps_only_change_does_not_claim_a_level_passed(self) -> None:
+        """只改 lock 文件时没有 .py / .sh 可查，不能写成「L1 通过」。"""
+        repo = self.make_repo({"uv.lock": "version = 1\n"})
+        code, out = self.run_cli(VERIFY, repo, "--level", "L1", "--deps")
+        self.assertEqual(code, 1)
+        self.assertIn("仅执行 --deps 依赖审计", out)
+        self.assertIn("后置校验 D", out)
+        self.assertNotIn("后置校验 L1", out)
+
+    @unittest.skipUnless(bash_available(), "需要 bash 才能让 .sh 改动进入校验")
+    def test_security_axis_without_python_files_is_reported(self) -> None:
+        """安全轴只扫 .py：没有 .py 改动时明确报未校验，而不是静默跳过。"""
+        repo = self.make_repo({"run.sh": "echo hi\n"})
+        _, out = self.run_cli(VERIFY, repo, "--level", "L1", "--security")
+        self.assertIn("安全轴未校验", out)
+
+
+class AxisFinalizeTest(unittest.TestCase):
+    """两个轴的判定口径：都不看退出码，解析输出后自行裁决。"""
+
+    def test_bandit_findings_fail_with_location(self) -> None:
+        detail = json.dumps(
+            {
+                "results": [
+                    {
+                        "filename": "a.py",
+                        "line_number": 3,
+                        "test_id": "B324",
+                        "issue_severity": "HIGH",
+                        "issue_confidence": "HIGH",
+                        "issue_text": "Use of weak MD5 hash",
+                    }
+                ]
+            }
+        )
+        verify = load_verify_module()
+        result = verify._finalize_security(make_outcome("bandit", detail))
+        self.assertFalse(result.passed)
+        self.assertIn("a.py:3", result.detail)
+        self.assertIn("B324", result.detail)
+
+    def test_bandit_clean_run_passes(self) -> None:
+        verify = load_verify_module()
+        result = verify._finalize_security(
+            make_outcome("bandit", json.dumps({"results": []}), passed=True)
+        )
+        self.assertTrue(result.passed)
+
+    def test_bandit_own_error_is_not_swallowed(self) -> None:
+        """bandit 自身报错时原样保留，不得被改写成「通过」。"""
+        verify = load_verify_module()
+        raw = "bandit: error: unrecognized arguments: --nope"
+        result = verify._finalize_security(make_outcome("bandit", raw))
+        self.assertFalse(result.passed)
+        self.assertIn("unrecognized arguments", result.detail)
+
+    def test_json_extraction_tolerates_surrounding_logs(self) -> None:
+        verify = load_verify_module()
+        self.assertEqual(
+            verify._extract_json('INFO start\n{"results": []}\ntrailing'),
+            {"results": []},
+        )
+        self.assertIsNone(verify._extract_json("no json here"))
+
+    def test_pip_audit_vulnerabilities_fail_and_ids_are_deduped(self) -> None:
+        """pip-audit 会重复列出同一个漏洞 ID，原样打印会把一行撑成一屏。"""
+        detail = json.dumps(
+            {
+                "dependencies": [
+                    {
+                        "name": "requests",
+                        "version": "2.19.0",
+                        "vulns": [
+                            {"id": "PYSEC-1"},
+                            {"id": "PYSEC-1"},
+                            {"id": "PYSEC-2"},
+                        ],
+                    }
+                ]
+            }
+        )
+        verify = load_verify_module()
+        result = verify._finalize_deps(make_outcome("pip-audit", detail))
+        self.assertFalse(result.passed)
+        self.assertIn("PYSEC-1、PYSEC-2", result.detail)
+
+    def test_pip_audit_clean_run_passes(self) -> None:
+        detail = json.dumps(
+            {"dependencies": [{"name": "requests", "version": "2.32.5", "vulns": []}]}
+        )
+        verify = load_verify_module()
+        result = verify._finalize_deps(make_outcome("pip-audit", detail, passed=True))
+        self.assertTrue(result.passed)
+        self.assertIn("未发现已知漏洞", result.detail)
+
+    def test_pip_audit_offline_is_a_gap_not_a_failure(self) -> None:
+        """离线时审计根本没跑成：既不算通过，也不能写成「失败」。"""
+        verify = load_verify_module()
+        result = verify._finalize_deps(
+            make_outcome("pip-audit", "ERROR: connection refused")
+        )
+        self.assertTrue(result.gap)
+        self.assertFalse(result.passed)
+        self.assertIn("未真正执行", result.detail)
+
+    def test_pip_audit_broken_environment_points_at_reinstall(self) -> None:
+        """环境被删文件要与网络问题分开：实测杀软会误删 cyclonedx/model/vulnerability.py。"""
+        verify = load_verify_module()
+        raw = (
+            "Traceback (most recent call last):\n"
+            '  File "cyclonedx/model/bom.py", line 55, in <module>\n'
+            "    from .vulnerability import Vulnerability\n"
+            "ModuleNotFoundError: No module named 'cyclonedx.model.vulnerability'"
+        )
+        result = verify._finalize_deps(make_outcome("pip-audit", raw))
+        self.assertTrue(result.gap)
+        self.assertIn("uv tool install pip-audit --upgrade", result.detail)
+        self.assertNotIn("离线", result.detail)
+
+    def test_pip_audit_unknown_failure_lists_causes_without_guessing(self) -> None:
+        """认不出原因时只列可能项，不得硬猜成某一个。"""
+        verify = load_verify_module()
+        result = verify._finalize_deps(make_outcome("pip-audit", "ERROR: boom"))
+        self.assertTrue(result.gap)
+        self.assertIn("常见原因", result.detail)
+        self.assertNotIn("杀软", result.detail)
+
+    def test_ruff_fallback_select_covers_ai_prone_rules(self) -> None:
+        """B/UP/DTZ 专拦模型从训练数据里带出的过时写法与时区裸 datetime。"""
+        verify = load_verify_module()
+        selected = set(verify.RUFF_SELECT.split(","))
+        self.assertTrue({"B", "UP", "DTZ"} <= selected)
 
 
 @unittest.skipIf(not GIT, "需要 git 才能构造临时仓库")
