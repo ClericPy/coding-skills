@@ -1,0 +1,4 @@
+# 行尾统一为 LF：不依赖各人本机的 core.autocrlf。
+# 本仓此前没有这个文件，LF 只靠作者机器的 system 级 core.autocrlf=true 维持，
+# 换台机器（autocrlf 未设或 false）就会把 CRLF 原样提交进 index。
+* text=auto eol=lf

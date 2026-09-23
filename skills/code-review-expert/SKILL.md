@@ -1,6 +1,6 @@
 ---
 name: code-review-expert
-description: "资深架构师级 Code Review 与 Spec 验收：融合契约与测试验收、SOLID 与设计模式、健壮性（异常/并发/资源/安全）、性能成本、向后兼容与可观测性审查，仅报 ≥80% 置信度问题并分 Blocker/Major/Minor 三档，严禁 commit/push。仅限用户手动调用（manual-only; invoke only when the user explicitly asks）"
+description: "资深架构师级 Code Review 与 Spec 验收：融合逻辑正确性、契约与测试验收、SOLID 与设计模式、健壮性（异常/并发/资源/安全）、性能成本、向后兼容与可观测性审查，仅报 ≥80% 置信度问题并分 Blocker/Major/Minor 三档，严禁 commit/push。仅限用户手动调用（manual-only; invoke only when the user explicitly asks）"
 disable-model-invocation: true
 ---
 
@@ -27,7 +27,7 @@ disable-model-invocation: true
 1. **定基线** — 按上述规则确定范围，列出涉及的文件。
 2. **读 Spec** — 存在对应 Spec / 设计文档时先读它；无 Spec 时以代码与用户描述为准，并在结论中声明这一点。
 3. **分组与风险定位** — 按模块、生产者与消费者、同关注点把文件分组；单文件改动 ≥ 50 行、或一组文件合计改动 ≥ 100 行时，先花一步列出风险点（位置、性质、影响，按严重度排序）与每条要核对的证据，再进入逐行细审。小改动直接审。
-4. **逐维度过筛** — 按 `references/dimensions.md` 的六个维度逐项检查，不要跳维度；每个变更文件单独过一遍，不因它小或「次要」而跳过。
+4. **逐维度过筛** — 按 `references/dimensions.md` 的七个维度逐项检查，不要跳维度；每个变更文件单独过一遍，不因它小或「次要」而跳过。
 5. **置信度门禁** — 对每条候选问题做证据核验，达不到门槛的直接丢弃（受保护主题除外，见下）。
 6. **分档输出** — 按 Blocker / Major / Minor 分组报告。
 
@@ -74,5 +74,5 @@ disable-model-invocation: true
 
 ## 引用文件
 
-- 六个维度的完整检查清单（含每个维度的「不报」条件）→ `references/dimensions.md`
+- 七个维度的完整检查清单（含每个维度的「不报」条件）→ `references/dimensions.md`
 - 三档定级锚点、受保护主题与正反例 → `references/severity-calibration.md`

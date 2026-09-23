@@ -56,8 +56,8 @@ npx skills add ClericPy/coding-skills -a <agent> --skill change-linter -y
 | [**ttttt**](./skills/ttttt/SKILL.md) | ⚠️ 接管 tmux 会话执行终端操作：「看-想-做」闭环，含 base64 防转义通道与破坏性命令确认 | `/ttttt` | 仅手动 |
 | [**wwwww**](./skills/wwwww/SKILL.md) | 执行 openspec change 全流程：Worktree 隔离 → 实现自测 → 验收 → 存档 → 提交 → rebase + merge --ff-only 合并 | `/wwwww` | 仅手动 |
 | [**yyyyy**](./skills/yyyyy/SKILL.md) | 验收进行中的变更（spec 变更或 openspec change，自动判断）：文档代码对齐、测试全过、闸门检查（证据锚定 / 配套同步 / 依赖锁文件 / 发布面 / 静默破坏疑点），通过后存档清理。只做闸门，深审请手动 `/code-review-expert` | `/yyyyy` | 仅手动 |
-| [**code-review-expert**](./skills/code-review-expert/SKILL.md) | 资深架构师级 Code Review 与 Spec 验收：六维度审查（契约与环境、架构设计、健壮性与并发、可观测性、性能成本、向后兼容），仅报 ≥80% 置信度问题并分 Blocker/Major/Minor 三档 | `/code-review-expert` | 仅手动 |
-| [**change-linter**](./skills/change-linter/SKILL.md) | 改动 Python / Shell 后判定并执行 L1–L4 分级后置校验，并如实报告工具缺失导致的未校验缺口 | `/change-linter` | 可自动触发 |
+| [**code-review-expert**](./skills/code-review-expert/SKILL.md) | 资深架构师级 Code Review 与 Spec 验收：七维度审查（逻辑正确性、契约与环境、架构设计、健壮性与并发、可观测性、性能成本、向后兼容），仅报 ≥80% 置信度问题并分 Blocker/Major/Minor 三档 | `/code-review-expert` | 仅手动 |
+| [**change-linter**](./skills/change-linter/SKILL.md) | 改动 Python / Shell 后判定并执行 L1–L4 分级后置校验（另可按需叠加 `--security` bandit 源码安全扫描与 `--deps` pip-audit 依赖漏洞审计两个正交轴），并如实报告工具缺失导致的未校验缺口 | `/change-linter` | 可自动触发 |
 
 **仅手动** = 只能由你在 `/` 菜单里主动调用；**可自动触发** = 模型也会在合适时机自己调用（同时仍可手动调用）。
 
@@ -96,6 +96,8 @@ uv tool install mypy --upgrade
 uv tool install pyright --upgrade
 uv tool install pyrefly --upgrade
 uv tool install shellcheck-py   # 可选：.sh 静态检查增强（shellcheck 官方二进制的 PyPI 再打包）
+uv tool install bandit --upgrade      # 可选：--security 轴（源码安全扫描）
+uv tool install pip-audit --upgrade   # 可选：--deps 轴（依赖漏洞审计，需联网）
 ```
 
 若连 `uv` 自身都没有，需要先自行安装 uv，否则无法补齐工具链。其余 6 个技能不依赖这些工具。
