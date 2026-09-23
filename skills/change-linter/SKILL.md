@@ -1,7 +1,7 @@
 ---
 name: change-linter
-description: "改动 Python / Shell 文件后判定并执行 L1–L4 分级后置校验（ruff / ty / pyrefly / pyright / mypy / bash -n），并如实报告工具缺失导致的未校验缺口。Use after modifying .py or .sh files, before claiming a change is complete or reporting success; also when the user asks to run post-edit checks, lint, type-check, or verify that a change passes L1–L4."
-compatibility: "Requires git and uv (which provides Python); ruff required, ty/pyrefly/pyright/mypy optional"
+description: "改动 Python / Shell 文件后判定并执行 L1–L4 分级后置校验（ruff / ty / pyrefly / pyright / mypy / bash -n），并按改动性质叠加两个正交轴：--security（bandit 源码安全扫描）与 --deps（pip-audit 依赖漏洞审计）；如实报告工具缺失导致的未校验缺口。Use after modifying .py or .sh files, before claiming a change is complete or reporting success; also when the user asks to run post-edit checks, lint, type-check, or verify that a change passes L1–L4; add --security when the change touches auth, input validation, subprocess, deserialization, crypto or secrets, and add --deps when it touches dependency manifests or lock files."
+compatibility: "Requires git and uv (which provides Python); ruff required, ty/pyrefly/pyright/mypy/bandit/pip-audit optional"
 allowed-tools: Bash(${CLAUDE_SKILL_DIR}/scripts/verify.py *)
 ---
 
@@ -19,6 +19,7 @@ allowed-tools: Bash(${CLAUDE_SKILL_DIR}/scripts/verify.py *)
 ## 流程
 
 1. **判级** — 按下方速查表判定级别；拿不准时取较高一级。
+   **另判两个正交轴**（与级别无关，按改动性质决定是否叠加）：改动涉及认证授权 / 输入校验 / 子进程 / 反序列化 / 加密哈希 / 密钥处理 / SQL 拼接 / `eval`·`exec` → 加 `--security`；改动涉及依赖清单或锁文件（`requirements*.txt` / `pyproject.toml` / `uv.lock` / `poetry.lock` / `Pipfile.lock`）→ 加 `--deps`。
 2. **执行** — 用 uv 跑脚本（uv 自带 Python，一条命令跨全平台，不依赖系统上有没有 `python`）：
 
    ```bash
@@ -32,7 +33,7 @@ allowed-tools: Bash(${CLAUDE_SKILL_DIR}/scripts/verify.py *)
    - 自动发现会**排除本技能自身的安装副本**，排除数量会打印出来；确需检查这些文件时用 `--files` 显式指定。已删除的文件不会被送检；改动**仅为**删除文件时脚本空跑并报「无适用校验对象」。
    - 两个可选开关：**`--project-scope`**——判定为 L3/L4 且改动涉及公共接口 / 跨模块时加上，类型工具（ty/pyrefly/pyright/mypy）改扫整个项目；单文件检查抓不到「改签名破坏下游调用方」，此开关补上这个盲区，但会连带暴露项目存量类型错误，汇报时须区分存量与本次引入。**ruff 配置自动让位**——项目根有 `pyproject.toml`（含 `[tool.ruff]`）或 `ruff.toml` 时，脚本不传兜底参数，以项目自己的规则为准。
    - **复杂度随 L1 一起跑**：本次改动碰过的函数卡 8，同一次改动里没碰过的存量函数放宽到 12（8~12 记为「存量容忍」并打印出来）。它独立成一条 `complexity` 记录，与 ruff 风格检查分开；阈值判定在脚本内完成，不交给 ruff 退出码。
-3. **处理缺失工具** — 脚本报告工具缺失时，**先问用户一次**是否安装；用户同意才加 `--install-missing` 重跑。
+3. **处理缺失工具** — 脚本报告工具缺失时，**先问用户一次**是否安装；用户同意才加 `--install-missing` 重跑。**被拒绝后同一会话内不再重复询问**（新会话可再问一次），只如实标注未校验。
 4. **汇报** — 输出 `verify:` 行；未真正校验的部分必须如实标注。
 
 ## 级别速查
@@ -44,12 +45,30 @@ allowed-tools: Bash(${CLAUDE_SKILL_DIR}/scripts/verify.py *)
 | **L3** | 跨模块交互 / 公共接口或类型签名变更 | L1 + L2 + pyright |
 | **L4** | 大规模重构 / 核心模块 / 类型系统大范围变动 | L1 + L2 + L3 + mypy --strict |
 
-裁决规则：取最高适用 Level；判定后打印 `后置校验 L<N>`。逐项命令、安装方式与缺失策略见 `references/lint-levels.md`。
+裁决规则：取最高适用 Level；判定后打印 `后置校验 L<N>`。两个正交轴（`--security` / `--deps`）见下节，**不并入级别编号**。逐项命令、安装方式与缺失策略见 `references/lint-levels.md`。
+
+## 两个正交轴（不并入 L1–L4）
+
+L1–L4 是**类型检查深度**的累进梯。安全扫描与依赖审计跟类型深度无关，由**改动的性质**触发，因此单独成轴、不编号——否则「只改了一个依赖」也会被要求跑 `mypy --strict`。
+
+| 轴 | 触发条件 | 作用 |
+| --- | --- | --- |
+| **`--security`** | 改动碰了安全敏感面（认证授权 / 输入校验 / 子进程 / 反序列化 / 加密哈希 / 密钥 / SQL 拼接 / `eval`·`exec`） | bandit 扫**本次改动的 .py**（不扫全仓），只报 medium 及以上的严重度与置信度 |
+| **`--deps`** | 依赖清单或锁文件变更（`requirements*.txt` / `pyproject.toml` / `uv.lock` / `poetry.lock` / `Pipfile.lock`） | pip-audit 审依赖漏洞，来源自动取 lock 文件或 `requirements*.txt` |
+
+三条必须记住的口径：
+
+- **两者都不看退出码**，由脚本解析 JSON 后自行裁决：bandit 命中即非零，pip-audit 的非零同时表示「有漏洞」与「跑挂了」。
+- **`--deps` 必须能确定依赖来源**，找不到就报「未校验」并退 1。**绝不裸跑 pip-audit**——它审计的是自己所在的隔离环境，会给出「没发现漏洞」的假绿。
+- `--deps` 需要联网；离线或漏洞库不可用时记为**未校验**（不算通过，也不算失败）。bandit / pip-audit 缺失一律降级标注，不学 `ruff` 硬失败。
+
+报告头写成 `后置校验 L2 + S + D`；只有依赖变更、没有 `.py` / `.sh` 改动时写成 `后置校验 D`（此时 L 级什么都没跑，故不写）。
 
 ## 缺失工具的处理（重要）
 
 - `ruff` 缺失 → **硬失败**，不得降级放过；此时脚本改用 Python 自带的 `py_compile` 保住语法底线（只查语法，不含 lint 规则）。
 - 类型检查器（ty / pyrefly / pyright / mypy）缺失 → 该级**降级并显式标注「该级未真正校验」**。
+- `bandit` / `pip-audit` 缺失 → 对应轴**降级并显式标注未真正校验**；`--deps` 轴另外把「找不到依赖来源」与「离线导致审计跑不成」也各记为一次未校验。
 - `bash` 缺失 → 先回退探测 Git for Windows 的常见安装位置；两处都没有时该级判为未校验并明说「没有任何校验被真实执行」，不会静默跳过 `.sh`。
 - `uv` 缺失 → 报告「缺少 uv，无法安装校验工具链」，本机由此无法补齐，交回用户处理。
 - **解释器与 uv 都不存在** → 脚本根本无法执行；本次改动即**未被校验**，不得当成通过。
@@ -79,6 +98,16 @@ verify: 全部通过 (L2)
 缺失工具: ty → uv tool install ty --upgrade
 verify: 未完全通过 — L2 因 ty 缺失未真正校验，不得视为已通过
 ```
+
+叠加了正交轴时（报告头带上轴标记）：
+
+```
+后置校验 L2 + S + D
+执行: ruff ✓ | ruff ✓ | complexity ✓ | ty ✓ | pyrefly ✓ | bandit ✓ | pip-audit ✓
+verify: 全部通过 (L2 + S + D)
+```
+
+只有依赖变更、没有 `.py` / `.sh` 改动时，报告头写 `后置校验 D`——L 级什么都没跑，不能写成「L1 通过」。
 
 测试不在本技能范围，**也不重复执行**：改动涉及可运行的测试时——本会话内已真实跑过并拿到结果的，直接引用（写明已跑、范围与结论），**不得重跑**；尚未跑过且改动确需测试验证时，才运行必要用例（优先定向用例，不默认全量）；两者都不成立时如实写明未跑。禁止留白，也禁止为凑汇报重复执行刚跑过的测试。
 

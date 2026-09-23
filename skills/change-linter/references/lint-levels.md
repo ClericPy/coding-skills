@@ -21,7 +21,9 @@
 # FILES 由脚本自动发现，或用 --files 显式传入
 
 # ---- L1 ----
-ruff check --select E,F,W,I,S,PERF --ignore W291,W293,E203 --line-length 120 <FILES>
+ruff check --select E,F,W,I,S,PERF,B,UP,DTZ --ignore W291,W293,E203 --line-length 120 <FILES>
+#   ↑ B(bugbear) / UP(pyupgrade) / DTZ(flake8-datetimez) 专拦模型从训练数据里
+#     带出来的过时写法（datetime.utcnow()、typing.List）与时区裸 datetime
 ruff format --check <FILES>
 ruff check --select C901 --config lint.mccabe.max-complexity=8 --output-format concise <FILES>   # 复杂度，见下
 bash -n <SH_FILES>
@@ -51,6 +53,23 @@ mypy --strict <FILES>
 - 取不到 diff（非 git 仓库、路径不在仓库内、改动已提交）时**一律按存量口径 12**，避免把老函数误判成新代码制造噪音。
 - 该检查独立成一条 `complexity` 记录，与 ruff 的风格检查分开显示，通过时也会打印「存量容忍 N 处」。
 
+## 两个正交轴（不并入 L1–L4）
+
+L1–L4 是**类型检查深度**的累进梯（取最高适用者）。安全扫描与依赖审计跟类型深度无关，由**改动的性质**触发，因此单独成轴、不编号——否则「只改了一个依赖」也会被要求跑 `mypy --strict`。
+
+| 轴 | 触发条件 | 命令 |
+| --- | --- | --- |
+| **`--security`** | 改动碰了安全敏感面：认证授权 / 输入校验 / 子进程 / 反序列化 / 加密哈希 / 密钥处理 / SQL 拼接 / `eval`·`exec` | `bandit --format json --severity-level medium --confidence-level medium <本次改动的 .py>` |
+| **`--deps`** | 依赖清单或锁文件变更：`requirements*.txt` / `pyproject.toml` / `uv.lock` / `poetry.lock` / `Pipfile.lock` | `pip-audit --format json --progress-spinner off --strict` + 依赖来源（见下） |
+
+三条实现口径：
+
+1. **判定不看退出码**：bandit 命中即非零；pip-audit 的非零同时表示「有漏洞」与「跑挂了」。两者都解析 JSON 后自行裁决，与复杂度检查同一原则。
+2. **bandit 只扫本次改动的 .py**，不传 `-r .`——全仓扫描会把存量问题一起倒出来，而本技能的契约是「只校验本次改动」。代价是 `.bandit` 配置只在 `-r` 时自动加载，项目级 bandit 配置不生效；`--severity-level medium --confidence-level medium` 用来兜住最常见的低危噪音（如测试文件里的 `B101 assert_used`）。
+3. **pip-audit 必须能确定依赖来源**：有 `uv.lock` / `poetry.lock` / `Pipfile.lock` 时用 `--locked <项目目录>`，否则找 `requirements*.txt` 用 `-r`；两者都没有就明确报「未校验」并退 1。**绝不裸跑 pip-audit**——它审计的是自己所在的隔离环境，会输出「没发现漏洞」的假绿（实测裸跑只收集到它自己的 28 个包）。
+
+报告头写成 `后置校验 L2 + S + D`；只有依赖变更、没有 `.py` / `.sh` 改动时写成 `后置校验 D`（此时 L 级其实什么都没跑，故不写）。`--deps` 需要联网（默认查 PyPI 漏洞库），离线或服务不可用时该轴记为**未校验**：不算通过，也不算失败。
+
 ## 工具安装（仅 uv）
 
 ```bash
@@ -59,6 +78,8 @@ uv tool install ty --upgrade
 uv tool install mypy --upgrade
 uv tool install pyright --upgrade
 uv tool install pyrefly --upgrade
+uv tool install bandit --upgrade      # --security 轴
+uv tool install pip-audit --upgrade   # --deps 轴
 ```
 
 `uv` 自身缺失时无法用上述命令补齐，需用户先自行安装 uv。
@@ -75,6 +96,8 @@ uv run --no-project "$SKILL_DIR/scripts/verify.py" --level L3 --project-scope   
 uv run --no-project "$SKILL_DIR/scripts/verify.py" --probe                       # 只打印工具清单
 uv run --no-project "$SKILL_DIR/scripts/verify.py" --level L3 --fast             # 使用项目缓存换速度
 uv run --no-project "$SKILL_DIR/scripts/verify.py" --level L2 --install-missing  # 经用户同意后安装缺失工具
+uv run --no-project "$SKILL_DIR/scripts/verify.py" --level L1 --security        # 叠加 bandit 源码安全扫描
+uv run --no-project "$SKILL_DIR/scripts/verify.py" --level L1 --deps            # 叠加 pip-audit 依赖审计
 ```
 
 - **`--project-scope`**：类型工具（ty/pyrefly/pyright/mypy）的检查对象从改动文件扩大到整个项目目录，ruff 与 `bash -n` 仍只查改动文件。用于 L3/L4 公共接口 / 跨模块变更——单文件检查抓不到「改签名破坏下游调用方」；会连带扫出项目存量类型错误，汇报时须区分存量与本次引入。
@@ -99,4 +122,6 @@ uv run --no-project "$SKILL_DIR/scripts/verify.py" --level L2 --install-missing 
 | `uv` | 报告「缺少 uv，无法安装校验工具链」，不尝试安装 |
 | `bash`（存在 `.sh` 改动时） | 先按 PATH 探测，找不到再回退到 Git for Windows 的常见安装位置（`%ProgramFiles%\Git\bin\bash.exe` 等）；两处都没有时该级判为未校验并显式标注「没有任何校验被真实执行」 |
 | `shellcheck`（可选增强） | 存在则对 `.sh` 加跑静态检查（发现即判失败）；缺失仅提示，不影响通过与否，也不自动安装。补装方式：`uv tool install shellcheck-py`（PyPI 再打包，自带官方二进制，装完可执行名是 `shellcheck`） |
+| `bandit`（`--security` 轴） | 该轴降级并显式标注「未真正校验」，不学 `ruff` 硬失败。补装：`uv tool install bandit --upgrade` |
+| `pip-audit`（`--deps` 轴） | 同上。另外「找不到依赖来源」「离线跑不通」「自身环境被破坏（依赖文件缺失，如杀软误杀 `cyclonedx/model/vulnerability.py`）」三类都记为未校验，都不得算通过；后两类会分别给出各自的补救提示（重装 + 白名单 vs 检查网络） |
 | `--files` 指定的路径不存在 | 预检后直接报「--files 找不到文件」并给出「相对当前工作目录解析」的提示，不把 `E902 系统找不到指定的文件` 这种误导读者的报错抛给用户 |

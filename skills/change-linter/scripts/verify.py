@@ -10,6 +10,12 @@
 同一次改动里没碰过的存量函数放宽到 12；阈值判定在脚本内完成，不交给
 ruff 的退出码。
 
+另有两条与 Level 正交的可选轴，由调用方按「改动的性质」开启，不并入级别编号：
+
+    --security  bandit 扫本次改动的 .py（源码安全）
+    --deps      pip-audit 审依赖漏洞；来源取 lock 文件或 requirements*.txt，
+                需要网络，跑不动时记为「未校验」而不是「失败」
+
 退出码：
     0  该 Level 的全部校验都真实执行且通过；或改动仅为删除文件（无适用校验对象）
     1  存在校验失败，或存在未真正执行的校验（缺工具 / 无适用改动）
@@ -19,6 +25,7 @@ from __future__ import annotations
 
 import argparse
 import io
+import json
 import os
 import re
 import shutil
@@ -53,6 +60,11 @@ LEVEL_TOOLS: dict[str, tuple[str, ...]] = {
     "L4": ("ruff", "ty", "pyrefly", "pyright", "mypy"),
 }
 
+# 两个正交轴：源码安全扫描与依赖漏洞审计。它们与 L1–L4 的「类型检查深度」无关，
+# 由改动的性质触发，因此不并入级别编号——否则「只改了一个依赖」也会被要求跑 mypy --strict。
+SECURITY_TOOL = "bandit"
+DEPS_TOOL = "pip-audit"
+
 PROBE_TOOLS: tuple[str, ...] = (
     "ruff",
     "ty",
@@ -61,6 +73,8 @@ PROBE_TOOLS: tuple[str, ...] = (
     "mypy",
     SHELL_TOOL,
     "shellcheck",
+    SECURITY_TOOL,
+    DEPS_TOOL,
     UV,
     GIT,
 )
@@ -70,21 +84,52 @@ REQUIRED_TOOLS: frozenset[str] = frozenset({"ruff"})
 
 # 缺失则降级并显式标注“该级未真正校验”的工具
 DEGRADABLE_TOOLS: frozenset[str] = frozenset(
-    {"ty", "pyrefly", "pyright", "mypy", SHELL_TOOL}
+    {"ty", "pyrefly", "pyright", "mypy", SHELL_TOOL, SECURITY_TOOL, DEPS_TOOL}
 )
 
 # 不能经 uv tool install 安装的工具（bash 由系统提供，缺失时只能提示用户自装）
 NON_UV_TOOLS: frozenset[str] = frozenset({SHELL_TOOL})
 
 # ruff 缺省兜底参数：仅当被测项目未自带 ruff 配置时才传给 ruff，
-# 项目自带配置（pyproject.toml 的 [tool.ruff] / ruff.toml）时以项目为准
-RUFF_SELECT = "E,F,W,I,S,PERF"
+# 项目自带配置（pyproject.toml 的 [tool.ruff] / ruff.toml）时以项目为准。
+# B(bugbear) / UP(pyupgrade) / DTZ(flake8-datetimez) 专门拦模型最容易犯的两类：
+# 从训练数据里带出来的过时写法（datetime.utcnow()、typing.List）与时区裸 datetime
+RUFF_SELECT = "E,F,W,I,S,PERF,B,UP,DTZ"
 RUFF_IGNORE = "W291,W293,E203"
 RUFF_LINE_LENGTH = "120"
 
 RUFF_CONFIG_NAMES: tuple[str, ...] = ("ruff.toml", ".ruff.toml")
 PYPROJECT_NAME = "pyproject.toml"
 RUFF_SECTION_MARK = "[tool.ruff"
+
+# bandit：只把本次改动的 .py 当 target（不传 -r .），存量噪音在源头就不进报告。
+# 严重度与置信度都抬到 medium，挡掉最常见的低危噪音（如测试文件里的 B101 assert_used）
+BANDIT_SEVERITY = "medium"
+BANDIT_CONFIDENCE = "medium"
+
+# pip-audit：必须显式给依赖来源。裸跑审计的是 uvx / uv tool 自己的隔离环境，
+# 会给出「没发现漏洞」的假绿（实测：裸跑只收集到 pip-audit 自己的 28 个包）
+DEPS_LOCK_NAMES: tuple[str, ...] = ("uv.lock", "poetry.lock", "Pipfile.lock")
+DEPS_REQUIREMENT_GLOBS: tuple[str, ...] = (
+    "requirements*.txt",
+    "requirements/*.txt",
+)
+DEPS_SOURCE_NAME = "依赖来源"
+
+# 解析不出 JSON 时的两类原因：环境坏了（依赖文件缺失）与跑不通（离线等）。
+# 前者在本机实测发生过——杀软把 cyclonedx/model/vulnerability.py 当病毒删掉，
+# 而它在导入链上（_format → cyclonedx → model.bom → model.vulnerability），
+# 删了连 -f json 都起不来。两类原因的补救完全不同，必须分开说。
+DEPS_ENV_BROKEN_MARKERS: tuple[str, ...] = ("ModuleNotFoundError", "ImportError")
+DEPS_ENV_BROKEN_HINT = (
+    "pip-audit 自身环境不完整（依赖文件缺失，实测 cyclonedx/model/vulnerability.py "
+    "会被杀软误杀）——重装：uv tool install pip-audit --upgrade，"
+    "并给 uv tool 目录加杀软白名单"
+)
+DEPS_UNPARSABLE_HINT = (
+    "无法解析 pip-audit 的 JSON 输出，本次依赖审计未真正执行（原始输出见上）。"
+    "常见原因：离线、漏洞库服务不可用、依赖来源文件无法解析"
+)
 
 # C901 复杂度双阈值：本次改动碰过的函数按新代码标准卡，存量函数放宽
 COMPLEXITY_LABEL = "complexity"
@@ -142,11 +187,16 @@ class Check:
 
 @dataclass(frozen=True)
 class CheckOutcome:
-    """一条校验命令的执行结果。"""
+    """一条校验命令的执行结果。
+
+    gap=True 表示「这条校验没能真正跑成」（例如依赖审计因离线无法完成）：
+    既不算通过，也不该报成「失败」——后者会被读成代码有问题。
+    """
 
     check: Check
     passed: bool
     detail: str
+    gap: bool = False
 
 
 def _run(
@@ -283,11 +333,21 @@ def _drop_own_files(files: list[str]) -> tuple[list[str], int]:
     return kept, len(files) - len(kept)
 
 
-def _needed_tools(level: str, has_py: bool, has_sh: bool) -> list[str]:
-    """得出该级别在本次改动下真正需要的工具清单。"""
+def _needed_tools(
+    level: str,
+    has_py: bool,
+    has_sh: bool,
+    security: bool = False,
+    deps: bool = False,
+) -> list[str]:
+    """得出该级别与本次开启的轴真正需要的工具清单。"""
     needed: list[str] = list(LEVEL_TOOLS[level]) if has_py else []
     if has_sh:
         needed.append(SHELL_TOOL)
+    if security and has_py:
+        needed.append(SECURITY_TOOL)
+    if deps:
+        needed.append(DEPS_TOOL)
     return needed
 
 
@@ -427,6 +487,61 @@ def _build_shell_checks(sh_files: list[str]) -> list[Check]:
     return checks
 
 
+def _build_security_check(bandit: str, py_files: list[str]) -> Check:
+    """bandit 源码安全扫描。
+
+    目标就是本次改动的 .py，不传 -r .：全仓扫描会把存量问题一起倒出来，
+    而本技能的契约是「只校验本次改动」。代价是 .bandit 配置只在 -r 时自动加载，
+    项目级 bandit 配置不生效——用 --severity-level medium 兜住最常见的低危噪音。
+    """
+    return _make_check(
+        SECURITY_TOOL,
+        bandit,
+        (
+            "--format",
+            "json",
+            "--severity-level",
+            BANDIT_SEVERITY,
+            "--confidence-level",
+            BANDIT_CONFIDENCE,
+            *py_files,
+        ),
+    )
+
+
+def _resolve_deps_source(root: Path) -> tuple[str, ...] | None:
+    """探测依赖来源，返回 pip-audit 的目标参数；找不到来源时返回 None。
+
+    必须显式给来源：裸跑 pip-audit 审计的是它自己所在的隔离环境，
+    会输出「没发现漏洞」的假绿。
+    """
+    for name in DEPS_LOCK_NAMES:
+        if (root / name).is_file():
+            return ("--locked", str(root))
+    requirements: list[str] = []
+    for pattern in DEPS_REQUIREMENT_GLOBS:
+        requirements.extend(sorted(str(item) for item in root.glob(pattern)))
+    if not requirements:
+        return None
+    args: list[str] = []
+    for item in requirements:
+        args.extend(("-r", item))
+    return tuple(args)
+
+
+def _build_deps_check(pip_audit: str, target: tuple[str, ...]) -> Check:
+    """pip-audit 依赖漏洞审计。
+
+    --strict 让依赖收集失败也整体失败，不静默放过；退出码 1 同时表示
+    「有漏洞」与「跑挂了」，所以判定一律以 JSON 解析结果为准。
+    """
+    return _make_check(
+        DEPS_TOOL,
+        pip_audit,
+        ("--format", "json", "--progress-spinner", "off", "--strict", *target),
+    )
+
+
 def _build_complexity_check(ruff: str, py_files: list[str], fast: bool) -> Check:
     """C901 复杂度：先按新代码阈值跑，超出的部分再由 diff 区分存量与新增。
 
@@ -461,8 +576,13 @@ def _build_checks(
     cwd: Path,
     project_scope: bool = False,
     respect_ruff_config: bool = False,
+    deps_target: tuple[str, ...] | None = None,
 ) -> list[Check]:
-    """按级别与实际可用工具构造校验命令清单；不可用的工具自然缺席。"""
+    """按级别、已开启的轴与实际可用工具构造校验命令清单；不可用的工具自然缺席。
+
+    两个正交轴不额外传布尔开关：`exe` 里有没有对应的可执行文件，就代表该轴是否开启
+    （`_needed_tools` 只在开关打开时才把工具名加进探测清单）。
+    """
     checks: list[Check] = []
     ruff = exe.get("ruff")
     if py_files and ruff:
@@ -477,6 +597,14 @@ def _build_checks(
         # 有 .py 改动却没有 ruff：用解释器自带的 py_compile 保住语法底线
         checks.append(_make_py_compile_check(py_files, temp_root))
     checks.extend(_build_shell_checks(sh_files))
+    # 安全轴只扫本次改动的 .py；没有 .py 改动时无对象可扫，由调用方给出提示
+    bandit = exe.get(SECURITY_TOOL)
+    if py_files and bandit:
+        checks.append(_build_security_check(bandit, py_files))
+    # 依赖轴与文件改动无关：只改了 lock 文件时它照样要跑
+    pip_audit = exe.get(DEPS_TOOL)
+    if deps_target is not None and pip_audit:
+        checks.append(_build_deps_check(pip_audit, deps_target))
     return checks
 
 
@@ -636,6 +764,109 @@ def _finalize_complexity(outcome: CheckOutcome, cwd: Path) -> CheckOutcome:
     )
 
 
+def _extract_json(text: str) -> object | None:
+    """从可能夹着日志的输出里取出最外层 JSON 对象；取不到返回 None。"""
+    start = text.find("{")
+    end = text.rfind("}")
+    if start < 0 or end <= start:
+        return None
+    try:
+        # 先落到 object 再返回：json.loads 的返回类型是 Any，
+        # 直接 return 会让 mypy --strict 报 no-any-return
+        parsed: object = json.loads(text[start : end + 1])
+    except ValueError:
+        return None
+    return parsed
+
+
+def _finalize_security(outcome: CheckOutcome) -> CheckOutcome:
+    """bandit 的判定不看退出码：解析 JSON 后自行裁决，与复杂度检查同一原则。"""
+    payload = _extract_json(outcome.detail)
+    results = payload.get("results") if isinstance(payload, dict) else None
+    if not isinstance(results, list):
+        # bandit 自身报错（参数错、文件找不到）：原样保留，别把真实错误吞掉
+        return outcome
+    if not results:
+        return CheckOutcome(
+            check=outcome.check,
+            passed=True,
+            detail=(
+                f"无 {BANDIT_SEVERITY} 及以上的安全问题"
+                f"（严重度 / 置信度均 ≥ {BANDIT_CONFIDENCE}）"
+            ),
+        )
+    lines = [f"{len(results)} 处 {BANDIT_SEVERITY} 及以上问题："]
+    for item in results:
+        if not isinstance(item, dict):
+            continue
+        lines.append(
+            f"{item.get('filename')}:{item.get('line_number')} "
+            f"{item.get('test_id')} "
+            f"[{item.get('issue_severity')}/{item.get('issue_confidence')}] "
+            f"{item.get('issue_text')}"
+        )
+    return CheckOutcome(check=outcome.check, passed=False, detail="\n".join(lines))
+
+
+def _unique_vuln_ids(vulns: object) -> list[str]:
+    """取出漏洞 ID 并去重。
+
+    pip-audit 会对同一漏洞重复列出（同一个 ID 在一个依赖下出现两次很常见），
+    原样打印会把一行撑成一屏。
+    """
+    ids: list[str] = []
+    if not isinstance(vulns, list):
+        return ids
+    for vuln in vulns:
+        if not isinstance(vuln, dict):
+            continue
+        identifier = vuln.get("id")
+        if identifier and str(identifier) not in ids:
+            ids.append(str(identifier))
+    return ids
+
+
+def _deps_gap_hint(detail: str) -> str:
+    """按输出内容给出未执行的原因。
+
+    认得出「环境坏了」就给可操作的补救；认不出只列可能原因，不硬猜一个——
+    猜错原因比不给原因更坏。
+    """
+    if any(marker in detail for marker in DEPS_ENV_BROKEN_MARKERS):
+        return DEPS_ENV_BROKEN_HINT
+    return DEPS_UNPARSABLE_HINT
+
+
+def _finalize_deps(outcome: CheckOutcome) -> CheckOutcome:
+    """pip-audit 的退出码 1 同时表示「有漏洞」与「跑挂了」，必须解析 JSON 区分。
+
+    解析不出 JSON 说明审计根本没跑成，记为 gap：既不算通过，也不写成「失败」。
+    """
+    payload = _extract_json(outcome.detail)
+    deps = payload.get("dependencies") if isinstance(payload, dict) else None
+    if not isinstance(deps, list):
+        return CheckOutcome(
+            check=outcome.check,
+            passed=False,
+            gap=True,
+            detail=f"{outcome.detail or '(无输出)'}\n\n{_deps_gap_hint(outcome.detail)}",
+        )
+    vulnerable = [item for item in deps if isinstance(item, dict) and item.get("vulns")]
+    if not vulnerable:
+        return CheckOutcome(
+            check=outcome.check,
+            passed=True,
+            detail=f"审计 {len(deps)} 个依赖，未发现已知漏洞",
+        )
+    lines = [f"{len(vulnerable)} 个依赖存在已知漏洞："]
+    for item in vulnerable:
+        ids = "、".join(_unique_vuln_ids(item["vulns"]))
+        fixes = "、".join(str(version) for version in item.get("fix_versions") or [])
+        suffix = f"（修复版本: {fixes}）" if fixes else ""
+        lines.append(f"{item.get('name')} {item.get('version')}: {ids}{suffix}")
+    return CheckOutcome(check=outcome.check, passed=False, detail="\n".join(lines))
+
+
 def _execute(check: Check, cwd: Path) -> CheckOutcome:
     """执行单条校验命令。"""
     env = {**os.environ, **dict(check.env)} if check.env else None
@@ -672,24 +903,23 @@ def _print_outcome(outcome: CheckOutcome) -> None:
     print(outcome.detail or "(无输出)")
 
 
-def _report(
-    level: str, outcomes: list[CheckOutcome], degraded: list[str], hard: list[str]
-) -> bool:
-    """打印汇总，返回该级别的校验是否全部真实执行且通过。"""
-    print(f"后置校验 {level}")
-    if outcomes:
-        marks = " | ".join(
-            f"{item.check.tool} {MARK_OK if item.passed else MARK_WARN}"
-            for item in outcomes
-        )
-        print(f"执行: {marks}")
+def _report_sections(outcomes: list[CheckOutcome]) -> None:
+    """逐条打印失败详情、未校验原因，以及通过时也必须露出的口径信息。"""
     for outcome in outcomes:
-        if not outcome.passed:
+        if outcome.gap:
+            # 没能真正跑成的校验：单独成段，别混进「失败」被读成代码有问题
+            print(f"\n--- 未校验: {outcome.check.label} ---")
+            print(outcome.detail or "(无输出)")
+        elif not outcome.passed:
             _print_outcome(outcome)
-        elif outcome.check.tool == COMPLEXITY_LABEL:
-            # 通过时也打印：让「存量容忍了几处」可见，否则放宽口径等于隐形
+        elif outcome.check.tool in (COMPLEXITY_LABEL, SECURITY_TOOL, DEPS_TOOL):
+            # 通过时也打印：让「存量容忍了几处」「扫了多少依赖」可见，否则口径等于隐形
             print(f"\n--- {outcome.check.tool} ---")
             print(outcome.detail or "(无输出)")
+
+
+def _report_missing(hard: list[str], degraded: list[str]) -> None:
+    """打印缺失工具与补装提示。"""
     missing = [*hard, *degraded]
     uv_missing = [tool for tool in missing if tool not in NON_UV_TOOLS]
     if uv_missing:
@@ -702,10 +932,19 @@ def _report(
             f"缺失工具: {SHELL_TOOL} → 需自行安装 bash（Git Bash / WSL 等），uv 无法代装"
         )
 
-    failed = [item for item in outcomes if not item.passed]
+
+def _report_verdict(
+    label: str,
+    outcomes: list[CheckOutcome],
+    degraded: list[str],
+    hard: list[str],
+    notes: tuple[str, ...],
+) -> bool:
+    """裁决并打印 verify 行；未真正执行的校验一律不得算通过。"""
     if not outcomes:
         print("verify: 未校验 — 没有任何校验被真实执行，不得视为已通过")
         return False
+    failed = [item for item in outcomes if not item.passed and not item.gap]
     if failed:
         print(f"verify: 失败 — {len(failed)} 项校验未通过")
         return False
@@ -714,13 +953,46 @@ def _report(
             f"verify: 未通过 — 必需工具缺失: {', '.join(hard)}（不可降级），不得视为已通过"
         )
         return False
-    if degraded:
+    gaps = [item for item in outcomes if item.gap]
+    if degraded or gaps or notes:
+        reasons: list[str] = []
+        if degraded:
+            reasons.append(f"{', '.join(degraded)} 缺失")
+        if gaps:
+            reasons.append(
+                f"{', '.join(item.check.tool for item in gaps)} 未能真正执行"
+            )
+        reasons.extend(notes)
         print(
-            f"verify: 未完全通过 — {', '.join(degraded)} 缺失，对应校验未真正执行，不得视为已通过"
+            f"verify: 未完全通过 — {'；'.join(reasons)}，对应校验未真正执行，不得视为已通过"
         )
         return False
-    print(f"verify: 全部通过 ({level})")
+    print(f"verify: 全部通过 ({label})")
     return True
+
+
+def _report(
+    label: str,
+    outcomes: list[CheckOutcome],
+    degraded: list[str],
+    hard: list[str],
+    notes: tuple[str, ...] = (),
+) -> bool:
+    """打印汇总，返回本次校验是否全部真实执行且通过。
+
+    notes 放「工具在、但这次没有可审对象」这类原因（如依赖轴找不到 lock 文件）；
+    它们不能混进 degraded——那里会被拼成 `uv tool install <名字>` 的安装提示。
+    """
+    print(f"后置校验 {label}")
+    if outcomes:
+        marks = " | ".join(
+            f"{item.check.tool} {MARK_OK if item.passed else MARK_WARN}"
+            for item in outcomes
+        )
+        print(f"执行: {marks}")
+    _report_sections(outcomes)
+    _report_missing(hard, degraded)
+    return _report_verdict(label, outcomes, degraded, hard, notes)
 
 
 def _parse_args(argv: list[str] | None) -> argparse.Namespace:
@@ -739,6 +1011,16 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
         "--project-scope",
         action="store_true",
         help="类型工具改扫整个项目目录（L3/L4 公共接口变更时用，防漏报下游调用方）",
+    )
+    parser.add_argument(
+        "--security",
+        action="store_true",
+        help="叠加 bandit 源码安全扫描（只扫本次改动的 .py，medium 及以上）",
+    )
+    parser.add_argument(
+        "--deps",
+        action="store_true",
+        help="叠加 pip-audit 依赖漏洞审计（需 lock 文件或 requirements*.txt，需联网）",
     )
     parser.add_argument("--probe", action="store_true", help="只打印工具清单后退出")
     parser.add_argument(
@@ -792,6 +1074,10 @@ def _handle_empty_changes(
     """无适用文件时的裁决：打印结论并返回退出码；仍有适用文件时返回 None。"""
     if py_files or sh_files:
         return None
+    if args.deps:
+        # 依赖轴的对象是 lock / requirements，与 .py / .sh 改动无关，不能在这里早退
+        print("本次无 .py / .sh 改动，仅执行 --deps 依赖审计")
+        return None
     if skipped:
         # 改动仅为删除：本就没有静态校验对象，不是校验缺口，不算失败
         print("改动均为删除文件，无静态校验对象")
@@ -834,6 +1120,21 @@ def _print_mode_notes(
     return tool_root, config_root is not None
 
 
+def _finalize_outcome(outcome: CheckOutcome, cwd: Path) -> CheckOutcome:
+    """按工具分派二次裁决。
+
+    这三条都不看退出码，改由解析输出后自行判定：复杂度要分新代码与存量两档，
+    bandit 命中即非零，pip-audit 的非零同时表示「有漏洞」与「跑挂了」。
+    """
+    if outcome.check.tool == COMPLEXITY_LABEL:
+        return _finalize_complexity(outcome, cwd)
+    if outcome.check.tool == SECURITY_TOOL:
+        return _finalize_security(outcome)
+    if outcome.check.tool == DEPS_TOOL:
+        return _finalize_deps(outcome)
+    return outcome
+
+
 def _execute_checks(
     args: argparse.Namespace,
     py_files: list[str],
@@ -841,6 +1142,7 @@ def _execute_checks(
     exe: dict[str, str | None],
     cwd: Path,
     respect_ruff_config: bool,
+    deps_target: tuple[str, ...] | None = None,
 ) -> list[CheckOutcome]:
     """构造并并行执行全部校验命令；临时缓存目录用完即清。"""
     temp_root = Path(tempfile.mkdtemp(prefix="change-linter-"))
@@ -855,15 +1157,55 @@ def _execute_checks(
             cwd,
             args.project_scope,
             respect_ruff_config,
+            deps_target,
         )
         with ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
             outcomes = list(pool.map(partial(_execute, cwd=cwd), checks))
     finally:
         shutil.rmtree(temp_root, ignore_errors=True)
-    return [
-        _finalize_complexity(item, cwd) if item.check.tool == COMPLEXITY_LABEL else item
-        for item in outcomes
-    ]
+    return [_finalize_outcome(item, cwd) for item in outcomes]
+
+
+def _axis_label(level: str, has_files: bool, security: bool, deps: bool) -> str:
+    """报告头里的级别标注：L 级 + 本次开启的正交轴，让轴是否生效可见。
+
+    没有 .py / .sh 改动时 L 级其实什么都没跑（例如只改了 lock 文件），
+    此时不写 L 级，避免被读成「L 级通过了」。
+    """
+    parts = [level] if has_files else []
+    if security:
+        parts.append("S")
+    if deps:
+        parts.append("D")
+    return " + ".join(parts) if parts else level
+
+
+def _prepare_axes(
+    args: argparse.Namespace, py_files: list[str], tool_root: Path
+) -> tuple[tuple[str, ...] | None, list[str]]:
+    """准备两个正交轴：解析依赖来源、判断安全轴有没有可扫对象。
+
+    返回 (pip-audit 目标参数, 未真正执行的原因清单)；后者交给 `_report` 折进结论。
+    """
+    deps_target: tuple[str, ...] | None = None
+    notes: list[str] = []
+    if args.deps:
+        deps_target = _resolve_deps_source(tool_root)
+        if deps_target is None:
+            print(
+                "依赖轴未校验：未找到 "
+                + " / ".join((*DEPS_LOCK_NAMES, "requirements*.txt"))
+                + "，无法确定审计对象"
+            )
+            print(
+                "  （裸跑 pip-audit 审计的是它自己的隔离环境，"
+                "会给出「没发现漏洞」的假绿）"
+            )
+            notes.append("依赖轴无审计对象（未找到 lock 文件或 requirements*.txt）")
+    if args.security and not py_files:
+        print("安全轴未校验：本次没有 .py 改动，bandit 无对象可扫")
+        notes.append("安全轴无对象（本次没有 .py 改动）")
+    return deps_target, notes
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -901,15 +1243,23 @@ def main(argv: list[str] | None = None) -> int:
     tool_root, respect_ruff_config = _print_mode_notes(args, py_files, sh_files, cwd)
     py_files = _relativize(py_files, tool_root)
     sh_files = _relativize(sh_files, tool_root)
-    needed = _needed_tools(args.level, bool(py_files), bool(sh_files))
+
+    deps_target, notes = _prepare_axes(args, py_files, tool_root)
+
+    needed = _needed_tools(
+        args.level, bool(py_files), bool(sh_files), args.security, args.deps
+    )
     exe = _resolve_missing(needed, cwd, args.install_missing)
     missing = [tool for tool in needed if exe[tool] is None]
     hard = [tool for tool in missing if tool in REQUIRED_TOOLS]
     degraded = [tool for tool in missing if tool in DEGRADABLE_TOOLS]
     outcomes = _execute_checks(
-        args, py_files, sh_files, exe, tool_root, respect_ruff_config
+        args, py_files, sh_files, exe, tool_root, respect_ruff_config, deps_target
     )
-    return 0 if _report(args.level, outcomes, degraded, hard) else 1
+    label = _axis_label(
+        args.level, bool(py_files or sh_files), args.security, args.deps
+    )
+    return 0 if _report(label, outcomes, degraded, hard, tuple(notes)) else 1
 
 
 if __name__ == "__main__":
