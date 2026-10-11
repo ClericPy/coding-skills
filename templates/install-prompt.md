@@ -20,6 +20,7 @@
 | ClericPy/coding-skills | skill      | `npx skills add`（绑定 agent）  |
 | skill-creator          | skill      | `npx skills add`（绑定 agent）  |
 | caveman                | skill      | `npx skills add`（绑定 agent）  |
+| find-skills            | skill      | `npx skills add`（绑定 agent）  |
 
 > 规则：**skill 类一律用 `npx skills add` 安装并绑定 agent，不要写进 MCP 配置，也不要走 winget**；只有上面标了 MCP 的条目才写 MCP 配置；winget 只用于 rtk（且仅当用户在 Windows 且装有 winget）。
 
@@ -332,10 +333,23 @@ npx skills add JuliusBrussee/caveman --skill caveman --agent <AGENTS> -g -y
 
 ---
 
+## 第 13 步：find-skills（skill，生态发现层）
+
+**简介**：Agent Skills 生态的**发现层**，Vercel Labs 官方出品——仓库就是 CLI 本体的 <https://github.com/vercel-labs/skills>，技能放在 `skills/find-skills/`。装上后你平时问「有没有能做 X 的技能」，agent 才会自己去 skills.sh 榜单与 `npx skills find` 找候选、按安装量 / 来源 / star 三道门槛筛一遍、列清单给你确认；前面各步装的都是某个具体东西，只有这条让 agent 会「自己找」。**仓库别写错**：它不在 `vercel-labs/agent-skills`（实测那个仓库的 9 个技能全是 React / Next.js / Vercel / web 向，没有它）。属于 skill，用 npx skills 安装并绑定 agent。
+
+```bash
+npx skills add vercel-labs/skills --skill find-skills --agent <AGENTS> -g -y
+```
+
+> 该仓库目前只有这一个技能，`--skill find-skills` 可以省；保留它是为了这个仓库以后加别的技能时语义不变。
+> ⚠️ 它 SKILL.md 里的两条写法**不要照抄**：①Step 6 给的是 `npx skills add <owner/repo@skill> -g -y`，`-y` 会跳过确认——照它的建议办事不等于可以不问，**装任何第三方技能前都要先把仓库、技能名、来源与安装量列给我确认，我说装才装**；②它示例里的 `vercel-labs/agent-skills@react-best-practices` 与实测技能名对不上（该仓库里这个技能叫 `vercel-react-best-practices`）。
+
+---
+
 ## 执行要求
 
 1. **第 0 步没确认 agent 列表之前，不要执行任何带 `--agent` 的命令。**
-2. **类型别搞混**：标为 skill 的条目（i-have-adhd、Mattpocock、ClericPy/coding-skills、skill-creator、caveman、agent-browser）一律 `npx skills add`，**不要**写成 MCP 配置或 winget（agent-browser 另有 CLI，用 npm / brew / cargo 装，同样**不要**写 MCP 配置）；标为 MCP 的条目（repomix、chrome-devtools-mcp、anysearch、codegraph serve --mcp）才写 MCP 配置；winget 只用于 rtk（Windows 且装有 winget 时）。
+2. **类型别搞混**：标为 skill 的条目（i-have-adhd、Mattpocock、ClericPy/coding-skills、skill-creator、caveman、agent-browser、find-skills）一律 `npx skills add`，**不要**写成 MCP 配置或 winget（agent-browser 另有 CLI，用 npm / brew / cargo 装，同样**不要**写 MCP 配置）；标为 MCP 的条目（repomix、chrome-devtools-mcp、anysearch、codegraph serve --mcp）才写 MCP 配置；winget 只用于 rtk（Windows 且装有 winget 时）。
 3. 需要 key 的只有第 6 步 anysearch：**停下来弹窗问我要 key**，拿到后**先按目标 agent 的语法写环境变量引用**，该 agent 不支持（HTTP MCP 只收静态 headers 时）才退回明文并告知我「配置文件已含密钥」；任何情况下都不要留着 `<ANYSEARCH_API_KEY>` 占位符就当完成。
 4. 每个条目装完用一行输出告诉我结果（成功 / 失败 / 已存在），失败的把报错贴出来，不要静默跳过。
 5. 命令以本文件给出的为准，不要自行换成别的工具或参数。

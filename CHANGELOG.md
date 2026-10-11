@@ -3,6 +3,10 @@
 本项目所有可见变更按时间倒序记录于此。格式参照 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 条目以 `HH:MM` 标注提交时间，未提交的改动先归入「未发布」，随当次提交并入日期段落。
 
+## 2026-10-11
+
+- **21:20** `docs:` install-prompt 新增 `find-skills`（第 13 步 + 分类总览 1 行 + 执行要求第 2 条的类型列举）。它补的是那份清单缺的**发现层**：其余 11 条都是「装某个具体东西」，只有它让 agent 在平时会话里自己按 skills.sh 榜单与 `npx skills find` 找候选。**来源经实测纠正**：技能在 CLI 自己那个仓库 `vercel-labs/skills`（`--list` 报 `Found 1 skill`），**不在** `vercel-labs/agent-skills`——实测后者 9 个技能全是 React / Next.js / Vercel / web 向，无此项。另记两条它 SKILL.md 里的坑：①Step 6 的 `-g -y` 会跳过确认，故写明「装任何第三方技能前先把仓库、技能名、来源与安装量列给用户确认」；②其示例 `vercel-labs/agent-skills@react-best-practices` 与实测技能名 `vercel-react-best-practices` 对不上。README 不动——安装提示词继续只以链接形式出现在「批量安装工具链」一节，避免同一内容两处存放后漂移（`validate.py` 只核对 README 与 `skills/` 索引，不校验该提示词）。
+
 ## 2026-09-23
 
 - **23:29** `feat:` change-linter 新增两个与 L1–L4 **正交**的轴：`--security`（bandit 源码安全扫描）与 `--deps`（pip-audit 依赖漏洞审计）。两轴由**改动的性质**触发而非类型检查深度，因此不并入级别编号——做成 L5 会让「只改了一个依赖」也被迫跑 `mypy --strict`。①**bandit 只把本次改动的 `.py` 当 target**（不传 `-r .`），存量噪音在源头就不进报告；代价是 `.bandit` 配置不自动加载，改用 `--severity-level medium --confidence-level medium` 兜住低危噪音。②**pip-audit 必须能确定依赖来源**（`uv.lock`/`poetry.lock`/`Pipfile.lock` → `--locked`，否则 `requirements*.txt` → `-r`），两者都没有就报未校验并退 1；**绝不裸跑**——实测裸跑只收集到它自己隔离环境的 28 个包，并输出「没发现漏洞」的假绿。③两者都**解析 JSON 自行裁决、不看退出码**（bandit 命中即非零；pip-audit 的非零同时表示「有漏洞」与「跑挂了」）。④给 `CheckOutcome` 加 `gap` 通道，把「这条校验没跑成」与「失败」分开，未真正执行的校验一律不算通过。⑤报告头写成 `后置校验 L1 + S + D`；只改 lock 文件、没有 `.py`/`.sh` 改动时写 `后置校验 D`（此时 L 级什么都没跑，不能写成「L1 通过」）。pip-audit 解析不出 JSON 时按输出内容区分「环境被删文件」（实测杀软会误杀 `cyclonedx/model/vulnerability.py`，它在导入链上，删了连 `-f json` 都起不来）与「离线跑不通」；**认不出原因只列可能项，不硬猜**。SKILL.md 与 references/lint-levels.md 同步：新增「两个正交轴」节、工具安装两条、缺失策略两行、用法两例。
