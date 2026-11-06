@@ -16,13 +16,12 @@
 | anysearch              | HTTP MCP   | 写 MCP 配置（需 API key）         |
 | codegraph              | 工具 + MCP   | 安装脚本 / npm 全局，`serve --mcp` |
 | agent-browser          | CLI + skill | npm 全局 / brew / cargo + `npx skills add` |
-| rtk                    | 系统工具       | winget / brew / 脚本          |
 | ClericPy/coding-skills | skill      | `npx skills add`（绑定 agent）  |
 | skill-creator          | skill      | `npx skills add`（绑定 agent）  |
 | caveman                | skill      | `npx skills add`（绑定 agent）  |
 | find-skills            | skill      | `npx skills add`（绑定 agent）  |
 
-> 规则：**skill 类一律用 `npx skills add` 安装并绑定 agent，不要写进 MCP 配置，也不要走 winget**；只有上面标了 MCP 的条目才写 MCP 配置；winget 只用于 rtk（且仅当用户在 Windows 且装有 winget）。
+> 规则：**skill 类一律用 `npx skills add` 安装并绑定 agent，不要写进 MCP 配置，也不要走包管理器**；只有上面标了 MCP 的条目才写 MCP 配置。
 
 ---
 
@@ -256,44 +255,7 @@ npx skills add vercel-labs/agent-browser --agent <AGENTS> -g -y
 
 ---
 
-## 第 9 步：RTK（Rust Token Killer，系统工具）
-
-**简介**：Rust 写的 CLI 代理层，夹在 AI 助手和真实命令之间——AI 照常跑 `git status` / `rg` / `vitest` / `tsc`，RTK 把冗长 stdout/stderr 压缩成机器可读摘要回灌模型，一次会话约省 80% token，不改命令副作用和退出码。仓库：<https://github.com/rtk-ai/rtk>。这是系统工具，不是 skill，也不写 MCP 配置。
-
-**安装**（Windows 优先 winget，仅当用户装有 winget）：
-
-```powershell
-# Windows（winget，优先；包名已确认）
-winget install rtk-ai.rtk
-```
-
-```bash
-# macOS / Linux（brew，优先）
-brew install rtk-ai/tap/rtk
-```
-
-```bash
-# 或 macOS / Linux 一键脚本
-curl -fsSL https://raw.githubusercontent.com/rtk-ai/rtk/master/install.sh | sh
-```
-
-```bash
-# 或 cargo（必须带 git URL，避免装错同名包）
-cargo install --git https://github.com/rtk-ai/rtk --branch master rtk
-```
-
-**hook 到 Claude Code**（注册成 PreToolUse hook，让 AI 发起的每条 Bash 命令自动走 RTK 压缩）：
-
-```bash
-rtk hook claude
-```
-
-> 官方等价命令是 `rtk init`（按项目）或 `rtk init --global`（全局写 settings.json），与 `rtk hook claude` 二选一即可，别重复执行；若 `rtk init` 不认识你的 agent，改用 hook 方式即可。
-> 验证：`rtk --version` 能出版本，`rtk gain` 能看到节省仪表盘。
-
----
-
-## 第 10 步：ClericPy/coding-skills（skill）
+## 第 9 步：ClericPy/coding-skills（skill）
 
 **简介**：中文 Python 开发者 ClericPy 个人维护的一组编码 skills 集合，含 7 个技能：`ccccc`（规范化提交）、`ppppp`（提示词调制）、`ttttt`（tmux 终端接管）、`wwwww`（openspec change 全流程）、`yyyyy`（变更验收）、`code-review-expert`（代码审查）、`change-linter`（L1–L4 分级后置校验，唯一可自动触发）。属于 skill，用 npx skills 安装并绑定 agent。
 
@@ -313,7 +275,7 @@ npx skills update ccccc change-linter -g -y
 
 ---
 
-## 第 11 步：skill-creator（skill）
+## 第 10 步：skill-creator（skill）
 
 **简介**：Anthropic 官方 skills 仓库（<https://github.com/anthropics/skills>）里的 `skill-creator`，引导你走完「明确意图 → 写草稿 → 建测试 → 并行评测 → 按反馈迭代」的完整 skill 开发生命周期，用来创建和改进新 skill。属于 skill，用 npx skills 安装并绑定 agent。
 
@@ -323,7 +285,7 @@ npx skills add anthropics/skills --skill skill-creator --agent <AGENTS> -g -y
 
 ---
 
-## 第 12 步：caveman（JuliusBrussee/caveman，skill）
+## 第 11 步：caveman（JuliusBrussee/caveman，skill）
 
 **简介**：热门技能（作者 Julius Brussee），把 AI 回复压缩成「穴居人式」极简短句，砍掉约 65%–75% 输出 token 同时保持技术准确（代码、命令、报错原文不动），自带 `/caveman-commit`、`/caveman-review`、`/caveman-stats`。仓库：<https://github.com/JuliusBrussee/caveman>。属于 skill，用 npx skills 安装并绑定 agent。
 
@@ -333,7 +295,7 @@ npx skills add JuliusBrussee/caveman --skill caveman --agent <AGENTS> -g -y
 
 ---
 
-## 第 13 步：find-skills（skill，生态发现层）
+## 第 12 步：find-skills（skill，生态发现层）
 
 **简介**：Agent Skills 生态的**发现层**，Vercel Labs 官方出品——仓库就是 CLI 本体的 <https://github.com/vercel-labs/skills>，技能放在 `skills/find-skills/`。装上后你平时问「有没有能做 X 的技能」，agent 才会自己去 skills.sh 榜单与 `npx skills find` 找候选、按安装量 / 来源 / star 三道门槛筛一遍、列清单给你确认；前面各步装的都是某个具体东西，只有这条让 agent 会「自己找」。**仓库别写错**：它不在 `vercel-labs/agent-skills`（实测那个仓库的 9 个技能全是 React / Next.js / Vercel / web 向，没有它）。属于 skill，用 npx skills 安装并绑定 agent。
 
@@ -349,7 +311,7 @@ npx skills add vercel-labs/skills --skill find-skills --agent <AGENTS> -g -y
 ## 执行要求
 
 1. **第 0 步没确认 agent 列表之前，不要执行任何带 `--agent` 的命令。**
-2. **类型别搞混**：标为 skill 的条目（i-have-adhd、Mattpocock、ClericPy/coding-skills、skill-creator、caveman、agent-browser、find-skills）一律 `npx skills add`，**不要**写成 MCP 配置或 winget（agent-browser 另有 CLI，用 npm / brew / cargo 装，同样**不要**写 MCP 配置）；标为 MCP 的条目（repomix、chrome-devtools-mcp、anysearch、codegraph serve --mcp）才写 MCP 配置；winget 只用于 rtk（Windows 且装有 winget 时）。
+2. **类型别搞混**：标为 skill 的条目（i-have-adhd、Mattpocock、ClericPy/coding-skills、skill-creator、caveman、agent-browser、find-skills）一律 `npx skills add`，**不要**写成 MCP 配置或包管理器命令（agent-browser 另有 CLI，用 npm / brew / cargo 装，同样**不要**写 MCP 配置）；标为 MCP 的条目（repomix、chrome-devtools-mcp、anysearch、codegraph serve --mcp）才写 MCP 配置。
 3. 需要 key 的只有第 6 步 anysearch：**停下来弹窗问我要 key**，拿到后**先按目标 agent 的语法写环境变量引用**，该 agent 不支持（HTTP MCP 只收静态 headers 时）才退回明文并告知我「配置文件已含密钥」；任何情况下都不要留着 `<ANYSEARCH_API_KEY>` 占位符就当完成。
 4. 每个条目装完用一行输出告诉我结果（成功 / 失败 / 已存在），失败的把报错贴出来，不要静默跳过。
 5. 命令以本文件给出的为准，不要自行换成别的工具或参数。

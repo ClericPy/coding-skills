@@ -65,7 +65,7 @@ npx skills add ClericPy/coding-skills -a <agent> --skill change-linter -y
 
 ## 批量安装工具链（可选）
 
-[`templates/install-prompt.md`](./templates/install-prompt.md) 是一份**整段粘贴给 AI 编程工具**的安装提示词：它先问你把技能绑到哪些 agent，再按条目分别用 `npx skills add`（skill 类）、MCP 配置（MCP 类）、包管理器（系统工具类）安装，不会把 skill 装成 MCP。除本仓库的 7 个技能外，还覆盖几套常用第三方 skill、MCP server 与 CLI 工具（repomix、chrome-devtools、anysearch、codegraph、agent-browser、rtk 等）——用不到的条目删掉即可。
+[`templates/install-prompt.md`](./templates/install-prompt.md) 是一份**整段粘贴给 AI 编程工具**的安装提示词：它先问你把技能绑到哪些 agent，再按条目分别用 `npx skills add`（skill 类）、MCP 配置（MCP 类）、包管理器（系统工具类）安装，不会把 skill 装成 MCP。除本仓库的 7 个技能外，还覆盖几套常用第三方 skill、MCP server 与 CLI 工具（repomix、chrome-devtools、anysearch、codegraph、agent-browser 等）——用不到的条目删掉即可。
 
 ## 更新与卸载
 
