@@ -6,6 +6,7 @@
 ## 未发布
 
 - **21:43** `docs:` install-prompt 删除 RTK 条目（第 9 步整节 + 分类总览 1 行 + 两处 winget 规则）。RTK 作为 PreToolUse hook 包裹全部 Bash 命令，收益不稳定且与现有 change-linter、命令批量策略重叠，作者判定不值得默认装。删除后步骤由 13 步收敛为 12 步，原第 10–13 步顺延为 9–12，全文无 winget 残留；README 的工具清单同步去掉 rtk。
+- **21:43** `docs:` 模板 AGENTS 补两条临时脚本判据（6883 → 6897 字符）：①临时脚本落系统临时目录、不落仓库，同名复用、用完即删——避免污染 `git status` 与误触 §3 门禁；②本地即时验证优先项目环境（`uv run --no-sync`），否则 `py`/`python3`，禁裸 `python`；`uv run` 默认 sync 并可能改写 `uv.lock`，故带 `--no-sync`。§7.4 远程执行限定为改走远端脚本文件（本地按需二选一）。
 
 ## 2026-11-01
 
