@@ -1,9 +1,9 @@
 ---
 name: code-review-expert
-description: "资深架构师级 Code Review（含 Spec 验收）与文档审验：代码按七维度审查（逻辑正确性、契约与环境、架构设计、健壮性与并发、可观测性、性能成本、向后兼容），提示词文档（SKILL.md / AGENTS.md / CONTRIBUTING / README / templates）按文本判据 T1–T7 与提示词判据 P8–P15 审验表述与可执行性；仅报 ≥80% 置信度问题并分 Blocker/Major/Minor 三档，文档类只出报告、禁止直接改文件，严禁 commit/push。闸门式验收（只判能不能收、能不能发，通过后存档清理）走 `/yyyyy`；纯文字润色（错别字、排版、措辞美化）与实现类工作不用本技能。仅限用户手动调用（manual-only; invoke only when the user explicitly asks）"
+description: "资深架构师级 Code Review（含 Spec 验收）与文档审验：代码按七维度审查（逻辑正确性、契约与环境、架构设计、健壮性与并发、可观测性、性能成本、向后兼容），提示词文档（SKILL.md / AGENTS.md / CONTRIBUTING / README / templates）按文本判据 T1–T7 与提示词判据 P8–P25 审验表述与可执行性；仅报 ≥80% 置信度问题并分 Blocker/Major/Minor 三档，文档类只出报告、禁止直接改文件，严禁 commit/push。闸门式验收（只判能不能收、能不能发，通过后存档清理）走 `/yyyyy`；纯文字润色（错别字、排版、措辞美化）与实现类工作不用本技能。仅限用户手动调用（manual-only; invoke only when the user explicitly asks）"
 disable-model-invocation: true
 metadata:
-  version: "1.2.0"
+  version: "1.3.0"
 ---
 
 # 资深架构师级 Code Review 与文档审验
@@ -15,7 +15,7 @@ metadata:
 | 对象 | 判据来源 | 范围纪律 |
 | --- | --- | --- |
 | **代码**（源码、脚本、配置、测试） | `references/dimensions.md` 七维度 | 只评本次新增与修改的行 |
-| **提示词文档**（`skills/*/SKILL.md`、`skills/*/references/*.md`、`templates/SKILL.md.tmpl`、`templates/install-prompt.md`、`templates/AGENTS.md`、`CONTRIBUTING.md`、`README.md`） | `references/prompt-failure-modes.md` 的 T1–T7 与 P8–P15 | **整份通读**，不以 diff 为界 |
+| **提示词文档**（`skills/*/SKILL.md`、`skills/*/references/*.md`、`templates/SKILL.md.tmpl`、`templates/install-prompt.md`、`templates/AGENTS.md`、`CONTRIBUTING.md`、`README.md`） | `references/prompt-failure-modes.md` 的 T1–T7 与 P8–P25 | **整份通读**，不以 diff 为界 |
 | **混合**（同一改动里两类都有） | 两份判据都过 | 报告按对象分节，不混排 |
 
 **文档类为什么整份读**：T1（前后矛盾）要求扫完全文找「同一件事的第 N 次出现」，只评 diff 会系统性漏掉跨节冲突。用户只要求评本次改动时，报告开头必须声明「仅评 diff，未做全篇矛盾扫描」。
@@ -41,7 +41,7 @@ metadata:
 2. **读 Spec 或建条目索引** — 代码有对应 Spec / 设计文档时先读；文档类先为每条规则建一行索引（`行号 + 规则摘要`），T1 的矛盾扫描靠它。**先建索引再判，不要边读边判。**
 3. **分组与风险定位** — 代码按模块、生产者与消费者、同关注点分组；单文件改动 ≥ 50 行、或一组合计 ≥ 100 行时，先列风险点（位置、性质、影响）与要核的证据。文档按节分组，先标出红线（禁止项、前置条件、输出格式）落在哪几行（P14）。
 4. **逐判据过筛** — 代码按七维度逐项过，不跳维度；文档按 T1–T7 逐条过。混合两类都过。
-5. **提示词侧专项（仅文档 / 混合）** — 过 P8–P15；按需做触发实验（**只对可自动触发的技能有意义**，判法与局限见 reference）；判据涉及提示词工程惯例、Agent Skills 标准、harness 实际行为时**先查再判**。
+5. **提示词侧专项（仅文档 / 混合）** — 过 P8–P25（P16 起为外部研究引入的判据，效力与争议见 reference 的「判据的效力与证据等级」）；按需做触发实验（**只对可自动触发的技能有意义**，判法与局限见 reference）；判据涉及提示词工程惯例、Agent Skills 标准、harness 实际行为时**先查再判**。
 6. **置信度门禁** — 逐条核证据，达标才报。
 7. **分档输出** — 按 Blocker / Major / Minor 分组，末尾给连锁修改清单。
 
@@ -105,5 +105,5 @@ metadata:
 ## 引用文件
 
 - 七维度完整清单（含每个维度的「不报」条件）→ `references/dimensions.md`（**第 4 步代码类过筛时读**；只做风险定位时不必读）
-- T1–T7 文本判据、P8–P15 提示词判据、触发实验与「必要时候搜索」硬规则 → `references/prompt-failure-modes.md`（**第 4 步读 T 部分、第 5 步读 P 部分**；纯代码评审不读）
+- T1–T7 文本判据、P8–P25 提示词判据、触发实验、必要时候搜索与判据效力分级 → `references/prompt-failure-modes.md`（**第 4 步读 T 部分、第 5 步读 P 部分**；纯代码评审不读）
 - 三档定级锚点、受保护主题与正反例 → `references/severity-calibration.md`（**第 6 步门禁与第 7 步分档时读**）
