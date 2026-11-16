@@ -4,6 +4,8 @@ description: "接管 tmux 会话执行终端操作（需提供会话名，可指
 disable-model-invocation: true
 argument-hint: "<tmux会话名> [user@host]"
 compatibility: "Requires tmux, ssh, base64, scp and a Unix-like shell; destructive commands require explicit user confirmation"
+metadata:
+  version: "1.0.0"
 ---
 
 # Role: Tmux Terminal Co-Pilot

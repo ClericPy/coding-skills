@@ -3,6 +3,8 @@ name: change-linter
 description: "改动 Python / Shell 文件后判定并执行 L1–L4 分级后置校验（ruff / ty / pyrefly / pyright / mypy / bash -n），并按改动性质叠加两个正交轴：--security（bandit 源码安全扫描）与 --deps（pip-audit 依赖漏洞审计）；如实报告工具缺失导致的未校验缺口。Use after modifying .py or .sh files, before claiming a change is complete or reporting success; also when the user asks to run post-edit checks, lint, type-check, or verify that a change passes L1–L4; add --security when the change touches auth, input validation, subprocess, deserialization, crypto or secrets, and add --deps when it touches dependency manifests or lock files."
 compatibility: "Requires git and uv (which provides Python); ruff required, ty/pyrefly/pyright/mypy/bandit/pip-audit optional"
 allowed-tools: Bash(${CLAUDE_SKILL_DIR}/scripts/verify.py *)
+metadata:
+  version: "1.0.0"
 ---
 
 # 改动分级后置校验

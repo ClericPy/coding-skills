@@ -3,6 +3,8 @@ name: ppppp
 description: "把原始需求调制成一份可直接使用的提示词：按场景判定表匹配 10 个模板并填入占位符，只输出调制后的提示词，不回答原问题。仅限用户手动调用（manual-only; invoke only when the user explicitly asks）"
 disable-model-invocation: true
 argument-hint: "<原始需求>"
+metadata:
+  version: "1.0.0"
 ---
 
 # 提示词调制器

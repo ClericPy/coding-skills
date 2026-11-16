@@ -2,6 +2,8 @@
 name: code-review-expert
 description: "资深架构师级 Code Review 与 Spec 验收：融合逻辑正确性、契约与测试验收、SOLID 与设计模式、健壮性（异常/并发/资源/安全）、性能成本、向后兼容与可观测性审查，仅报 ≥80% 置信度问题并分 Blocker/Major/Minor 三档，严禁 commit/push。仅限用户手动调用（manual-only; invoke only when the user explicitly asks）"
 disable-model-invocation: true
+metadata:
+  version: "1.0.0"
 ---
 
 # 资深架构师级 Code Review 与 Spec 验收

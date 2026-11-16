@@ -4,6 +4,8 @@ description: "按 5 步执行 openspec change 全流程：Worktree 隔离 → �
 disable-model-invocation: true
 argument-hint: "[Change-ID]"
 compatibility: "Requires git (worktree) and the OpenSpec CLI (openspec); detected at runtime"
+metadata:
+  version: "1.0.0"
 ---
 
 # openspec change 全流程

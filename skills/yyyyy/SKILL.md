@@ -2,6 +2,8 @@
 name: yyyyy
 description: "验收当前进行中的变更（spec 变更或 openspec change，自动判断）：文档与代码对齐、测试全过、无坏味道，遇冲突必弹窗确认，通过后存档清理，不直接提交代码。只做验收闸门，不做深度代码评审（需要深审时提示用户手动执行 /code-review-expert）。仅限用户手动调用（manual-only; invoke only when the user explicitly asks）"
 disable-model-invocation: true
+metadata:
+  version: "1.0.0"
 ---
 
 # 变更验收
