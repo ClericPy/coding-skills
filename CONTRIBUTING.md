@@ -95,7 +95,7 @@ uv run --no-project tests/test_install.py          # 安装行为回归（离线
 
 安装相关的实测结论（落点、符号链接、`--all` 的问题）见 README 的 Quickstart 说明。
 
-自检覆盖：根目录 `SKILL.md`、目录平铺层级、`.`/`_` 开头目录、`name` 与目录名一致性与 kebab-case、`description` 非空与长度、多行块标量拦截（仅对未加引号的值；name / description / compatibility）、`license` 字段提醒、未知字段白名单、`compatibility` 长度、`metadata.version` 格式、SKILL.md 正文行数、`references/`·`scripts/` 引用存在性（反引号与 markdown 链接两种写法都查，`#` 锚点与 `./` 前缀先归一化，含 `<...>` 的模板占位符跳过）、README 索引双向一致与重复条目。
+自检覆盖：根目录 `SKILL.md`、目录平铺层级、`.`/`_` 开头目录、`name` 与目录名一致性与 kebab-case、`description` 非空与长度、多行块标量拦截（仅对未加引号的值；name / description / compatibility；同一字段重复写时，任一处是裸块标量即报错）、`license` 字段提醒、未知字段白名单、`compatibility` 长度、`metadata.version` 格式、SKILL.md 正文行数、`references/`·`scripts/` 引用存在性（反引号与 markdown 链接两种写法都查，`#` 锚点与 `./` 前缀先归一化，含 `<...>` 的模板占位符跳过）、README 索引双向一致与重复条目。
 
 自检**只打印**每个技能的调用方式，不强制它必须手动或自动——两种都是合法设计。
 

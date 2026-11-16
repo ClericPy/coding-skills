@@ -882,6 +882,48 @@ class ValidateCliTest(CliTestCase):
         )
         self.assertEqual(strict_code, 1, strict_out)
 
+    def test_duplicate_description_quoted_then_block_scalar_is_error(self) -> None:
+        """重复 description：先合法引号串、后裸块标量，不能被前一处标记放过。"""
+        root = self.copy_repo_inputs()
+        target = root / "skills" / "ccccc" / "SKILL.md"
+        rewritten = []
+        for line in target.read_text(encoding="utf-8").splitlines():
+            if line.startswith("description:"):
+                rewritten.extend(
+                    [
+                        'description: "第一行正常描述"',
+                        "description: >-",
+                        "  第二行块标量",
+                    ]
+                )
+            else:
+                rewritten.append(line)
+        target.write_text("\n".join(rewritten) + "\n", encoding="utf-8")
+        code, out = self.run_cli(root / "scripts" / "validate.py", root)
+        self.assertEqual(code, 1, out)
+        self.assertIn("块标量", out)
+
+    def test_duplicate_description_block_scalar_then_quoted_is_error(self) -> None:
+        """反向顺序同样要报：任一处是裸块标量即记录，后一处合法也救不回来。"""
+        root = self.copy_repo_inputs()
+        target = root / "skills" / "ccccc" / "SKILL.md"
+        rewritten = []
+        for line in target.read_text(encoding="utf-8").splitlines():
+            if line.startswith("description:"):
+                rewritten.extend(
+                    [
+                        "description: >-",
+                        "  第一行块标量",
+                        'description: "第二行正常描述"',
+                    ]
+                )
+            else:
+                rewritten.append(line)
+        target.write_text("\n".join(rewritten) + "\n", encoding="utf-8")
+        code, out = self.run_cli(root / "scripts" / "validate.py", root)
+        self.assertEqual(code, 1, out)
+        self.assertIn("块标量", out)
+
 
 def main() -> int:
     """运行全部用例。"""
