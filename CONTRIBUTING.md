@@ -3,7 +3,7 @@
 本仓库是一个 Agent Skills 集合，通过 [`npx skills add`](https://github.com/vercel-labs/skills) 分发。
 新增或修改技能时，请遵守下面的硬规则；改完必须跑仓库自检。
 
-格式以 [Agent Skills 规范](https://agentskills.io/specification) 为准（`name` / `description` / `license` / `compatibility` / `metadata` / `allowed-tools` 六个标准字段）；本仓库在此之上只加仓库级约定：不写 `license`（根 LICENSE 兜底）、`description` 与 `name` 写成单行引号字符串、额外接受 `disable-model-invocation` 与 `argument-hint` 两个 Claude Code 扩展字段。
+格式以 [Agent Skills 规范](https://agentskills.io/specification) 为准（`name` / `description` / `license` / `compatibility` / `metadata` / `allowed-tools` 六个标准字段）；本仓库在此之上只加仓库级约定：不写 `license`（根 LICENSE 兜底）、`description` 与 `name` 写成单行引号字符串、`metadata.version` 必须写 `X.Y.Z`、额外接受 `disable-model-invocation` 与 `argument-hint` 两个 Claude Code 扩展字段。
 
 ## 目录结构
 
@@ -41,7 +41,7 @@ coding-skills/
 | `license` | 否 | 本仓库约定**不写**：由根 `LICENSE`（MIT）统一兜底 |
 | `compatibility` | 否 | ≤500 字符的环境要求声明（开放标准字段）。强环境依赖的技能应写，如 change-linter / ttttt / wwwww |
 | `argument-hint` | 否 | Claude Code 扩展：`/` 补全时的参数提示（如 `"<tmux会话名> [user@host]"`）；其他 harness 忽略，无害 |
-| `allowed-tools` | 否 | Claude Code 扩展（实验性）：预授权工具列表。官方推荐 `Bash(${CLAUDE_SKILL_DIR}/scripts/x.py *)` 让自带脚本免权限弹窗；**只给无副作用的脚本技能用** |
+| `allowed-tools` | 否 | 开放标准字段（实验性，各 harness 支持程度不一）：预授权工具列表。官方推荐 `Bash(${CLAUDE_SKILL_DIR}/scripts/x.py *)` 让自带脚本免权限弹窗；**只给无副作用的脚本技能用** |
 | `metadata` | 否 | 目前只认 `version`（`X.Y.Z`，随技能内容改动递增）：缺失告警、格式错报错。用于判断快照式安装的副本是哪一版 |
 
 ### 调用方式怎么选
@@ -65,7 +65,7 @@ coding-skills/
 
 - **`references/*.md`**：SKILL.md 只留流程与契约，把大段规则、清单、表格下沉到这里，并在 SKILL.md 里写明**何时读取**。SKILL.md 正文超过 500 行时自检会给出 warning。
   - **标注载荷时机**：引用要写清它在流程第几步用，别只写文件名——例如 `详细规则 → references/dimensions.md（流程第 2 步：逐维度审查）`。只给文件名会让模型一次性把全部 references 读完，第 3 层的意义就没了。
-  - 单个 reference 超过 300 行时，在里面自己加一节目录（见 `skills/ppppp/references/templates.md`）。
+  - 单个 reference 超过 300 行时，在里面自己加一节目录（例：`skills/code-review-expert/references/prompt-failure-modes.md`，394 行）。`skills/ppppp/references/templates.md` 只有 249 行、未到阈值，仅作目录写法参考。
 - **`scripts/*.py`**：技能要执行的机械步骤（如发现改动文件、跑外部工具）。脚本不要写仓库，级别判定这类判断题留在 SKILL.md 里由模型完成。脚本自身的后置校验至少 L2。
   - **脚本当黑盒**：SKILL.md 里必须写明「先跑 `--help`，源码只在它跑不动时读」。自带脚本动辄上千行（`change-linter` 的 `verify.py` 约 1400 行），整份读进上下文就为了跑一条命令，是纯浪费。
   - **调用写成 `uv run --no-project "$SKILL_DIR/scripts/x.py"`**（`SKILL_DIR="${ZCODE_SKILL_DIR:-${CLAUDE_SKILL_DIR}}"`，由 harness 展开自己的技能目录变量）。uv 自带 Python，所以一条命令跨全平台，**不要为不同系统各写一个启动器**，也不依赖系统上有没有 `python`。
@@ -95,7 +95,7 @@ uv run --no-project tests/test_install.py          # 安装行为回归（离线
 
 安装相关的实测结论（落点、符号链接、`--all` 的问题）见 README 的 Quickstart 说明。
 
-自检覆盖：根目录 `SKILL.md`、目录平铺层级、`.`/`_` 开头目录、`name` 与目录名一致性与 kebab-case、`description` 非空与长度、多行块标量拦截、`license` 字段提醒、未知字段白名单、`compatibility` 长度、`metadata.version` 格式、SKILL.md 正文行数、`references/`·`scripts/` 引用存在性、README 索引双向一致与重复条目。
+自检覆盖：根目录 `SKILL.md`、目录平铺层级、`.`/`_` 开头目录、`name` 与目录名一致性与 kebab-case、`description` 非空与长度、多行块标量拦截（name / description / compatibility）、`license` 字段提醒、未知字段白名单、`compatibility` 长度、`metadata.version` 格式、SKILL.md 正文行数、`references/`·`scripts/` 引用存在性（反引号与 markdown 链接两种写法都查，含 `<...>` 的模板占位符跳过）、README 索引双向一致与重复条目。
 
 自检**只打印**每个技能的调用方式，不强制它必须手动或自动——两种都是合法设计。
 
