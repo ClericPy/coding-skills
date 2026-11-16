@@ -4,7 +4,7 @@ description: "把原始需求调制成一份可直接使用的提示词：按场
 disable-model-invocation: true
 argument-hint: "<原始需求>"
 metadata:
-  version: "1.0.0"
+  version: "1.0.1"
 ---
 
 # 提示词调制器
@@ -68,7 +68,7 @@ metadata:
 
 ## 五、模板库
 
-10 个模板的完整原文见 [references/templates.md](references/templates.md)（文件头部有目录）。按第二节判定出场景后，读取该文件中对应模板的原文，按「三、填充规则」填入占位符——**模板其余文字一字不改**。
+10 个模板的完整原文见 [references/templates.md](references/templates.md)（文件头部有目录）。**流程第 1 步**按「二、场景判定表」判定出场景后，读取该文件中对应模板的原文（**流程第 2 步**），按「三、填充规则」填入占位符——**模板其余文字一字不改**。
 
 ---
 

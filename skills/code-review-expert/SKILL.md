@@ -1,9 +1,9 @@
 ---
 name: code-review-expert
-description: "资深架构师级 Code Review 与 Spec 验收：融合逻辑正确性、契约与测试验收、SOLID 与设计模式、健壮性（异常/并发/资源/安全）、性能成本、向后兼容与可观测性审查，仅报 ≥80% 置信度问题并分 Blocker/Major/Minor 三档，严禁 commit/push。仅限用户手动调用（manual-only; invoke only when the user explicitly asks）"
+description: "资深架构师级 Code Review 与 Spec 验收：融合逻辑正确性、契约与测试验收、SOLID 与设计模式、健壮性（异常/并发/资源/安全）、性能成本、向后兼容与可观测性审查，仅报 ≥80% 置信度问题并分 Blocker/Major/Minor 三档，严禁 commit/push。闸门式验收（只判能不能收、能不能发，通过后存档清理）走 `/yyyyy`，不要用本技能。仅限用户手动调用（manual-only; invoke only when the user explicitly asks）"
 disable-model-invocation: true
 metadata:
-  version: "1.0.0"
+  version: "1.1.0"
 ---
 
 # 资深架构师级 Code Review 与 Spec 验收
@@ -76,5 +76,5 @@ metadata:
 
 ## 引用文件
 
-- 七个维度的完整检查清单（含每个维度的「不报」条件）→ `references/dimensions.md`
-- 三档定级锚点、受保护主题与正反例 → `references/severity-calibration.md`
+- 七个维度的完整检查清单（含每个维度的「不报」条件）→ `references/dimensions.md`（**流程第 4 步逐维度过筛时读**；只做风险定位时不必读）
+- 三档定级锚点、受保护主题与正反例 → `references/severity-calibration.md`（**流程第 5 步置信度门禁与第 6 步分档时读**）
