@@ -693,9 +693,12 @@ class ValidateCliTest(CliTestCase):
         self.assertIn("不存在", out)
 
     def test_bad_version_format_is_error(self) -> None:
-        """`metadata.version` 必须是 X.Y.Z。"""
+        """`metadata.version` 必须是 X.Y.Z；不绑定具体版本号，只改格式。"""
         root = self.copy_repo_inputs()
-        self.rewrite_skill(root, "ccccc", '  version: "1.0.0"', '  version: "1.0"')
+        target = root / "skills" / "ccccc" / "SKILL.md"
+        text = target.read_text(encoding="utf-8")
+        line = next(item for item in text.splitlines() if item.startswith("  version:"))
+        target.write_text(text.replace(line, '  version: "1.0"'), encoding="utf-8")
         code, out = self.run_cli(root / "scripts" / "validate.py", root)
         self.assertEqual(code, 1, out)
         self.assertIn("metadata.version", out)
@@ -703,7 +706,10 @@ class ValidateCliTest(CliTestCase):
     def test_missing_version_warns(self) -> None:
         """缺 version 只告警：先落字段、后立校验的中间态不该把 --strict 打红。"""
         root = self.copy_repo_inputs()
-        self.rewrite_skill(root, "ccccc", 'metadata:\n  version: "1.0.0"\n', "")
+        target = root / "skills" / "ccccc" / "SKILL.md"
+        text = target.read_text(encoding="utf-8")
+        line = next(item for item in text.splitlines() if item.startswith("  version:"))
+        target.write_text(text.replace(f"metadata:\n{line}\n", ""), encoding="utf-8")
         code, out = self.run_cli(root / "scripts" / "validate.py", root)
         self.assertEqual(code, 0, out)
         self.assertIn("缺少 metadata.version", out)
