@@ -739,6 +739,32 @@ class ValidateCliTest(CliTestCase):
         self.assertEqual(code, 0, out)
         self.assertNotIn("不存在", out)
 
+    def test_frontmatter_comment_line_is_ignored(self) -> None:
+        """模板里 `# disable-model-invocation: true` 是注释，不能报成未知字段。"""
+        root = self.copy_repo_inputs()
+        self.rewrite_skill(
+            root,
+            "ccccc",
+            "metadata:",
+            "# 注释行：metadata 说明\nmetadata:",
+        )
+        code, out = self.run_cli(root / "scripts" / "validate.py", root, "--strict")
+        self.assertEqual(code, 0, out)
+        self.assertNotIn("未识别", out)
+
+    def test_trailing_comment_after_value_is_ignored(self) -> None:
+        """行尾注释不能混进字段值：`version: "X.Y.Z"  # 递增` 仍应通过格式校验。"""
+        root = self.copy_repo_inputs()
+        target = root / "skills" / "ccccc" / "SKILL.md"
+        text = target.read_text(encoding="utf-8")
+        line = next(item for item in text.splitlines() if item.startswith("  version:"))
+        target.write_text(
+            text.replace(line, line + "   # 随内容改动递增"), encoding="utf-8"
+        )
+        code, out = self.run_cli(root / "scripts" / "validate.py", root, "--strict")
+        self.assertEqual(code, 0, out)
+        self.assertNotIn("必须写成 X.Y.Z", out)
+
     def test_dead_file_pointer_is_error(self) -> None:
         """SKILL.md 引用了不存在的 references/ 文件时必须报错，不能让 --strict 全绿。"""
         root = self.copy_repo_inputs()
@@ -765,7 +791,7 @@ class ValidateCliTest(CliTestCase):
         self.assertIn("metadata.version", out)
 
     def test_missing_version_warns(self) -> None:
-        """缺 version 只告警：先落字段、后立校验的中间态不该把 --strict 打红。"""
+        """缺失只告警：非 strict 退 0；--strict 下 warning 仍按失败处理。"""
         root = self.copy_repo_inputs()
         target = root / "skills" / "ccccc" / "SKILL.md"
         text = target.read_text(encoding="utf-8")

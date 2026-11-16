@@ -96,10 +96,10 @@ class Problem:
 
 
 def strip_quotes(value: str) -> str:
-    """去掉最外层成对的引号。"""
-    if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
-        return value[1:-1]
-    return value
+    """取出字段值：去掉成对引号，并丢掉引号之外的行尾注释。"""
+    if len(value) >= 2 and value[0] in "\"'" and value[0] in value[1:]:
+        return value[1 : value.index(value[0], 1)]
+    return value.split(" #", 1)[0].rstrip()
 
 
 def parse_frontmatter(text: str) -> dict[str, str] | None:
@@ -120,7 +120,7 @@ def parse_frontmatter(text: str) -> dict[str, str] | None:
     for line in lines[1:]:
         if line.strip() == "---":
             return fields
-        if not line:
+        if not line or line.lstrip().startswith("#"):
             continue
         if line[0].isspace():
             if parent is None:
