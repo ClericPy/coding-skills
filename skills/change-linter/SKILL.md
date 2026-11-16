@@ -1,10 +1,10 @@
 ---
 name: change-linter
-description: "改动 Python / Shell 文件后判定并执行 L1–L4 分级后置校验（ruff / ty / pyrefly / pyright / mypy / bash -n），并按改动性质叠加两个正交轴：--security（bandit 源码安全扫描）与 --deps（pip-audit 依赖漏洞审计）；如实报告工具缺失导致的未校验缺口。Use after modifying .py or .sh files, before claiming a change is complete or reporting success; also when the user asks to run post-edit checks, lint, type-check, or verify that a change passes L1–L4; add --security when the change touches auth, input validation, subprocess, deserialization, crypto or secrets, and add --deps when it touches dependency manifests or lock files."
+description: "改动 Python / Shell 文件后判定并执行 L1–L4 分级后置校验（ruff / ty / pyrefly / pyright / mypy / bash -n），并按改动性质叠加两个正交轴：--security（bandit 源码安全扫描）与 --deps（pip-audit 依赖漏洞审计）；如实报告工具缺失导致的未校验缺口。Use after modifying .py or .sh files, before claiming a change is complete or reporting success; also when the user asks to run post-edit checks, lint, type-check, or verify that a change passes L1–L4; add --security when the change touches auth, input validation, subprocess, deserialization, crypto or secrets, and add --deps when it touches dependency manifests or lock files. Do NOT use for JS/TS/Go/Rust or any other non-Python/Shell change — those go through the repo's native toolchain (npm scripts / Makefile / go vet / cargo check) with the gaps reported explicitly; 非 `.py`/`.sh` 改动（JS/TS/Go/Rust 等）同理，走仓库原生工具链自行校验，不要调用本技能。"
 compatibility: "Requires git and uv (which provides Python); ruff required, ty/pyrefly/pyright/mypy/bandit/pip-audit optional"
 allowed-tools: Bash(${CLAUDE_SKILL_DIR}/scripts/verify.py *)
 metadata:
-  version: "1.0.0"
+  version: "1.1.0"
 ---
 
 # 改动分级后置校验
@@ -15,6 +15,7 @@ metadata:
 
 - **级别判定归你（模型）**：脚本不做级别推断。你必须先判定本次改动适用 L1–L4 中的哪一级，再传给脚本。
 - **机械执行归脚本**：改动文件发现、工具探测、并行执行、汇总与退出码全部由 `scripts/verify.py` 负责。
+- **脚本当黑盒**：先跑 `--help` 看用法，**不要读 `scripts/verify.py` 的源码**（约 1400 行，读进来就占满了上下文）；只有它跑不动、或报错看不懂时才去读对应片段。
 - **不写仓库**：脚本只向 stdout 输出。默认把工具缓存隔离到临时目录（ruff 用 `--no-cache`、mypy 用临时 `--cache-dir`），不往项目里写任何文件；`--fast` 例外，它按你的选择改回项目缓存。
 - **不跑测试**：本技能只做静态分级校验，不执行测试套件。测试状态按「汇报契约」处理，不因为要写汇报就把测试重跑一遍。
 
@@ -51,20 +52,9 @@ metadata:
 
 ## 两个正交轴（不并入 L1–L4）
 
-L1–L4 是**类型检查深度**的累进梯。安全扫描与依赖审计跟类型深度无关，由**改动的性质**触发，因此单独成轴、不编号——否则「只改了一个依赖」也会被要求跑 `mypy --strict`。
+`--security`（bandit 源码安全扫描）与 `--deps`（pip-audit 依赖漏洞审计）跟类型检查深度无关，由**改动的性质**触发，因此单独成轴、不编号——否则「只改了一个依赖」也会被要求跑 `mypy --strict`。触发条件见流程第 1 步。
 
-| 轴 | 触发条件 | 作用 |
-| --- | --- | --- |
-| **`--security`** | 改动碰了安全敏感面（认证授权 / 输入校验 / 子进程 / 反序列化 / 加密哈希 / 密钥 / SQL 拼接 / `eval`·`exec`） | bandit 扫**本次改动的 .py**（不扫全仓），只报 medium 及以上的严重度与置信度 |
-| **`--deps`** | 依赖清单或锁文件变更（`requirements*.txt` / `pyproject.toml` / `uv.lock` / `poetry.lock` / `Pipfile.lock`） | pip-audit 审依赖漏洞，来源自动取 lock 文件或 `requirements*.txt` |
-
-三条必须记住的口径：
-
-- **两者都不看退出码**，由脚本解析 JSON 后自行裁决：bandit 命中即非零，pip-audit 的非零同时表示「有漏洞」与「跑挂了」。
-- **`--deps` 必须能确定依赖来源**，找不到就报「未校验」并退 1。**绝不裸跑 pip-audit**——它审计的是自己所在的隔离环境，会给出「没发现漏洞」的假绿。
-- `--deps` 需要联网；离线或漏洞库不可用时记为**未校验**（不算通过，也不算失败）。bandit / pip-audit 缺失一律降级标注，不学 `ruff` 硬失败。
-
-报告头写成 `后置校验 L2 + S + D`；只有依赖变更、没有 `.py` / `.sh` 改动时写成 `后置校验 D`（此时 L 级什么都没跑，故不写）。
+**何时读 `references/axes.md`**：本次改动命中任一轴时读——里面是两轴参数、三条实现口径（不看退出码 / 只扫本次改动 / 依赖来源必须确定）、报告头写法与降级规则。纯 L 级改动不必读。
 
 ## 缺失工具的处理（重要）
 
