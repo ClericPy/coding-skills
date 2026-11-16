@@ -667,16 +667,77 @@ class ValidateCliTest(CliTestCase):
         self.assertIn("compatibility 长度 501 超过 500", out)
 
     def test_license_field_warns(self) -> None:
-        """本仓库约定不写 license（根 LICENSE 兜底），出现即提醒。"""
+        """本仓库约定不写 license（根 LICENSE 兜底），出现即提醒，且不重复报成未知字段。"""
         root = self.copy_repo_inputs()
         self.rewrite_skill(root, "ccccc", "metadata:", "license: MIT\nmetadata:")
         code, out = self.run_cli(root / "scripts" / "validate.py", root)
         self.assertEqual(code, 0, out)
         self.assertIn("不要写 license 字段", out)
+        self.assertNotIn("未识别", out)
         strict_code, strict_out = self.run_cli(
             root / "scripts" / "validate.py", root, "--strict"
         )
         self.assertEqual(strict_code, 1, strict_out)
+
+    def test_compatibility_block_scalar_is_error(self) -> None:
+        """`compatibility: >-` 与 description 一样会绕过 500 上限，必须报错。"""
+        root = self.copy_repo_inputs()
+        target = root / "skills" / "change-linter" / "SKILL.md"
+        rewritten = []
+        for line in target.read_text(encoding="utf-8").splitlines():
+            if line.startswith("compatibility:"):
+                rewritten.extend(["compatibility: >-", "  " + "x" * 600])
+            else:
+                rewritten.append(line)
+        target.write_text("\n".join(rewritten) + "\n", encoding="utf-8")
+        code, out = self.run_cli(root / "scripts" / "validate.py", root)
+        self.assertEqual(code, 1, out)
+        self.assertIn("compatibility 疑似 YAML 块标量", out)
+
+    def test_empty_invocation_value_warns(self) -> None:
+        """`disable-model-invocation:` 空值会被静默当成「可自动」，必须告警并在清单里标出。"""
+        root = self.copy_repo_inputs()
+        self.rewrite_skill(
+            root,
+            "ccccc",
+            "disable-model-invocation: true",
+            "disable-model-invocation:",
+        )
+        code, out = self.run_cli(root / "scripts" / "validate.py", root)
+        self.assertEqual(code, 0, out)
+        self.assertIn("是空值", out)
+        self.assertIn("取值存疑(空值)", out)
+        strict_code, strict_out = self.run_cli(
+            root / "scripts" / "validate.py", root, "--strict"
+        )
+        self.assertEqual(strict_code, 1, strict_out)
+
+    def test_markdown_link_dead_pointer_is_error(self) -> None:
+        """`[x](references/missing.md)` 这类链接形态同样要查，不能只看反引号。"""
+        root = self.copy_repo_inputs()
+        target = root / "skills" / "ccccc" / "SKILL.md"
+        target.write_text(
+            target.read_text(encoding="utf-8")
+            + "\n见 [坏链接](references/missing.md)。\n",
+            encoding="utf-8",
+        )
+        code, out = self.run_cli(root / "scripts" / "validate.py", root, "--strict")
+        self.assertEqual(code, 1, out)
+        self.assertIn("references/missing.md", out)
+        self.assertIn("不存在", out)
+
+    def test_template_placeholder_pointers_are_ignored(self) -> None:
+        """模板里的 `<name>` 占位符不是真引用：照模板新建技能后，自检不能因此判红。"""
+        root = self.copy_repo_inputs()
+        target = root / "skills" / "ccccc" / "SKILL.md"
+        target.write_text(
+            target.read_text(encoding="utf-8")
+            + "\n详细规则 → `references/<name>.md`\n辅助脚本 → `scripts/<name>.py`\n",
+            encoding="utf-8",
+        )
+        code, out = self.run_cli(root / "scripts" / "validate.py", root, "--strict")
+        self.assertEqual(code, 0, out)
+        self.assertNotIn("不存在", out)
 
     def test_dead_file_pointer_is_error(self) -> None:
         """SKILL.md 引用了不存在的 references/ 文件时必须报错，不能让 --strict 全绿。"""

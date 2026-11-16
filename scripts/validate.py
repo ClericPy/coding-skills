@@ -53,8 +53,11 @@ COMPATIBILITY_MAX_LENGTH = 500
 VERSION_PATTERN = re.compile(r"^\d+\.\d+\.\d+$")
 BODY_MAX_LINES = 500
 INDEX_PATTERN = re.compile(r"\./skills/([^/)\s]+)/SKILL\.md")
-# SKILL.md 里用反引号写出的自带文件引用，必须真实存在
-POINTER_PATTERN = re.compile(r"`((?:references|scripts)/[^`\s]+)`")
+# SKILL.md 里引用自带文件的两种写法（反引号与 markdown 链接），目标必须真实存在；
+# 含 `<...>` 的是模板占位符，跳过不判
+POINTER_PATTERN = re.compile(
+    r"`((?:references|scripts)/[^`\s]+)`|\]\(((?:references|scripts)/[^)\s]+)\)"
+)
 BLOCK_SCALAR_MARKS = (">", "|")
 
 ERROR = "error"
@@ -79,6 +82,9 @@ class Skill:
     version: str | None
     unexpected_fields: tuple[str, ...]
     has_license: bool
+    text: str
+    manual_present: bool
+    block_scalars: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -148,7 +154,15 @@ def load_skill(path: Path) -> Skill:
     """读取一个 SKILL.md 并解析出基本信息。"""
     text = path.read_text(encoding="utf-8-sig")
     fields = parse_frontmatter(text) or {}
+    manual_present = MANUAL_FIELD in fields
     manual_value = fields.get(MANUAL_FIELD) or None
+    block_scalars = tuple(
+        sorted(
+            field
+            for field in ("name", "description", "compatibility")
+            if (fields.get(field) or "")[:1] in BLOCK_SCALAR_MARKS
+        )
+    )
     unexpected = tuple(
         sorted(
             key
@@ -168,6 +182,9 @@ def load_skill(path: Path) -> Skill:
         version=fields.get(VERSION_FIELD) or None,
         unexpected_fields=unexpected,
         has_license=LICENSE_FIELD in fields,
+        text=text,
+        manual_present=manual_present,
+        block_scalars=block_scalars,
     )
 
 
@@ -216,7 +233,7 @@ def check_layout(repo_root: Path, skills_root: Path) -> list[Problem]:
 
 
 def check_identity(skill: Skill) -> list[Problem]:
-    """name 与 description 的必填、格式、长度与块标量误写。"""
+    """name 与 description 的必填、格式与长度。"""
     problems: list[Problem] = []
     label = f"{SKILLS_DIRNAME}/{skill.directory}/{SKILL_FILENAME}"
     if skill.name is None:
@@ -243,27 +260,24 @@ def check_identity(skill: Skill) -> list[Problem]:
                 f"{label}: description 长度 {len(skill.description)} 超过 {DESCRIPTION_MAX_LENGTH} 字符",
             )
         )
-
-    problems.extend(
-        Problem(
-            ERROR,
-            f"{label}: {field_name} 疑似 YAML 块标量（值以 {value[:1]!r} 开头），"
-            "本仓库只支持单行引号字符串，多行写法会绕过长度校验",
-        )
-        for field_name, value in (
-            ("name", skill.name),
-            ("description", skill.description),
-        )
-        if value and value[:1] in BLOCK_SCALAR_MARKS
-    )
     return problems
 
 
 def check_invocation(skill: Skill) -> list[Problem]:
-    """disable-model-invocation 的取值语义。"""
-    if skill.manual_value is None or skill.manual_value.lower() in INVOCATION_VALUES:
+    """disable-model-invocation 的存在性与取值语义。"""
+    if not skill.manual_present:
         return []
     label = f"{SKILLS_DIRNAME}/{skill.directory}/{SKILL_FILENAME}"
+    if not skill.manual_value:
+        return [
+            Problem(
+                WARNING,
+                f"{label}: {MANUAL_FIELD} 是空值，无法判定语义，将被当成「可自动触发」；"
+                "请显式写 true（仅手动）或 false（可自动）",
+            )
+        ]
+    if skill.manual_value.lower() in INVOCATION_VALUES:
+        return []
     return [
         Problem(
             WARNING,
@@ -277,6 +291,15 @@ def check_fields(skill: Skill) -> list[Problem]:
     """compatibility、license、未知字段与 metadata.version 的规范。"""
     problems: list[Problem] = []
     label = f"{SKILLS_DIRNAME}/{skill.directory}/{SKILL_FILENAME}"
+    problems.extend(
+        Problem(
+            ERROR,
+            f"{label}: {field} 疑似 YAML 块标量（值以 > 或 | 开头），"
+            "本仓库只支持单行引号字符串，多行写法会绕过长度校验",
+        )
+        for field in skill.block_scalars
+    )
+
     if (
         skill.compatibility is not None
         and len(skill.compatibility) > COMPATIBILITY_MAX_LENGTH
@@ -346,12 +369,17 @@ def check_skill(skill: Skill) -> list[Problem]:
 
 
 def check_pointers(skill: Skill) -> list[Problem]:
-    """核对 SKILL.md 里用反引号引用的 references/ scripts/ 文件是否真实存在。"""
-    text = skill.path.read_text(encoding="utf-8-sig")
+    """核对 SKILL.md 里引用的 references/ scripts/ 文件是否真实存在（反引号与链接两种写法）。"""
     label = f"{SKILLS_DIRNAME}/{skill.directory}/{SKILL_FILENAME}"
+    targets = {
+        target
+        for group in POINTER_PATTERN.findall(skill.text)
+        for target in group
+        if target and "<" not in target
+    }
     return [
         Problem(ERROR, f"{label}: 引用的 {target} 不存在")
-        for target in sorted(set(POINTER_PATTERN.findall(text)))
+        for target in sorted(targets)
         if not (skill.path.parent / target).is_file()
     ]
 
@@ -387,7 +415,9 @@ def print_inventory(skills: list[Skill]) -> None:
     """打印技能清单；取值无法识别时显式标出，不冒充「可自动」。"""
     print(f"技能清单（{len(skills)}）:")
     for skill in skills:
-        if (
+        if skill.manual_present and not skill.manual_value:
+            mode = "取值存疑(空值)"
+        elif (
             skill.manual_value is not None
             and skill.manual_value.lower() not in INVOCATION_VALUES
         ):

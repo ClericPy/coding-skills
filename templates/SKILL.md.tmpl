@@ -21,10 +21,11 @@ description: "<这个技能做什么、什么时候该用它>"
 
 ## 引用文件
 
-<!-- 只有真实需要时才创建 references/ 或 scripts/，并在此写明「何时读取 / 何时调用」 -->
+<!-- 只有真实需要时才创建 references/ 或 scripts/，并在此写明「何时读取 / 何时调用」；
+     用不到的整行删掉。`<...>` 占位符不会被自检判为死引用，但正式技能里应替换成真实文件名 -->
 
-- 详细规则 → `references/<name>.md`
-- 辅助脚本 → `scripts/<name>.py`
+- 详细规则 → `references/<name>.md`（按需创建，用不到就删掉本行）
+- 辅助脚本 → `scripts/<name>.py`（按需创建，用不到就删掉本行）
 
 调用脚本**必须用绝对路径**（Bash 的 cwd 是用户项目目录，不是技能目录），指令里禁止写 `python scripts/<name>.py` 这种相对路径：
 
