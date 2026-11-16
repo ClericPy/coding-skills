@@ -3,7 +3,7 @@ name: yyyyy
 description: "验收当前进行中的变更（spec 变更或 openspec change，自动判断）：文档与代码对齐、测试全过、无坏味道，遇冲突必弹窗确认，通过后存档清理，不直接提交代码。只做验收闸门，不做深度代码评审（需要深审时提示用户手动执行 /code-review-expert）。仅限用户手动调用（manual-only; invoke only when the user explicitly asks）"
 disable-model-invocation: true
 metadata:
-  version: "1.1.0"
+  version: "1.1.1"
 ---
 
 # 变更验收
@@ -35,12 +35,12 @@ metadata:
 
 ## 样例
 
-**验收总结**（第 5 步的产物，三段缺一不可；未覆盖的部分不得写成通过）：
+**验收总结**（第 5 步的产物，三段缺一不可；未覆盖的部分不得写成通过。路径、时间、数值均为占位，仅演示三段结构与写法，不要照抄）：
 
 ```text
-覆盖：openspec/changes/add-export/ 下 3 个 spec 增量、4 个改动文件；测试 `pytest -q` 本会话 21:04 实跑全绿。
-跳过：export_worker.py 的并发路径只有单测覆盖，未在真实队列上复跑；docs/ 未改动，无需做文档核对。
-待确认：ExportRequest.retries 默认值由 3 改成 5，spec 未提及——需要你决定补 spec 还是改回 3。
+覆盖：<change-id> 下 <N> 个 spec 增量、<M> 个改动文件；测试 `<test-cmd>` 本会话 <HH:MM> 实跑全绿。
+跳过：<文件> 的并发路径只有单测覆盖，未在真实队列上复跑；<目录> 未改动，无需做文档核对。
+待确认：<字段> 默认值由 <a> 改成 <b>，spec 未提及——需要你决定补 spec 还是改回 <a>。
 ```
 
 **察觉到需要深审时**（第 3 步按闸门逐条给结论的过程中，一旦某条指向需要逐维度推演的问题）：
@@ -49,3 +49,7 @@ metadata:
 - 一句话交接并停下：`本次改动删除了导出协议的一个字段，属于向后兼容风险，建议手动 /code-review-expert 深审后再归档`；然后不改代码、不归档、不继续跑后续步骤。
 
 开始验收
+
+## 输出语言
+
+验收报告的语言跟随用户提问语言。

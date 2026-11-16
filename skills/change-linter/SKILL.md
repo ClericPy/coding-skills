@@ -1,10 +1,10 @@
 ---
 name: change-linter
-description: "改动 Python / Shell 文件后判定并执行 L1–L4 分级后置校验（ruff / ty / pyrefly / pyright / mypy / bash -n），并按改动性质叠加两个正交轴：--security（bandit 源码安全扫描）与 --deps（pip-audit 依赖漏洞审计）；如实报告工具缺失导致的未校验缺口。Use after modifying .py or .sh files, before claiming a change is complete or reporting success; also when the user asks to run post-edit checks, lint, type-check, or verify that a change passes L1–L4; add --security when the change touches auth, input validation, subprocess, deserialization, crypto or secrets, and add --deps when it touches dependency manifests or lock files. Do NOT use for JS/TS/Go/Rust or any other non-Python/Shell change — those go through the repo's native toolchain (npm scripts / Makefile / go vet / cargo check) with the gaps reported explicitly; 非 `.py`/`.sh` 改动（JS/TS/Go/Rust 等）同理，走仓库原生工具链自行校验，不要调用本技能。"
+description: "改动 Python / Shell 文件后判定并执行 L1–L4 分级后置校验（ruff / ty / pyrefly / pyright / mypy / bash -n），并按改动性质叠加两个正交轴：--security（bandit 源码安全扫描）与 --deps（pip-audit 依赖漏洞审计）；如实报告工具缺失导致的未校验缺口。Use after modifying .py or .sh files, before claiming a change is complete or reporting success; also when the user asks to run post-edit checks, lint, type-check, or verify that a change passes L1–L4; add --security when the change touches auth, input validation, subprocess, deserialization, crypto or secrets, and add --deps when it touches dependency manifests or lock files. Do NOT use for JS/TS/Go/Rust or any other non-Python/Shell change — those go through the repo's native toolchain (npm scripts / Makefile / go vet / cargo check) with the gaps reported explicitly."
 compatibility: "Requires git and uv (which provides Python); ruff required, ty/pyrefly/pyright/mypy/bandit/pip-audit optional"
 allowed-tools: Bash(${CLAUDE_SKILL_DIR}/scripts/verify.py *)
 metadata:
-  version: "1.1.0"
+  version: "1.1.1"
 ---
 
 # 改动分级后置校验
@@ -104,3 +104,7 @@ verify: 全部通过 (L2 + S + D)
 测试不在本技能范围，**也不重复执行**：改动涉及可运行的测试时——本会话内已真实跑过并拿到结果的，直接引用（写明已跑、范围与结论），**不得重跑**；尚未跑过且改动确需测试验证时，才运行必要用例（优先定向用例，不默认全量）；两者都不成立时如实写明未跑。禁止留白，也禁止为凑汇报重复执行刚跑过的测试。
 
 **严禁把未校验写成已完成**，也严禁省略缺失工具清单。
+
+## 输出语言
+
+汇报的语言跟随用户提问语言；工具输出与报错原文照抄，不翻译。

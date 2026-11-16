@@ -5,7 +5,7 @@ disable-model-invocation: true
 argument-hint: "[Change-ID]"
 compatibility: "Requires git (worktree) and the OpenSpec CLI (openspec); detected at runtime"
 metadata:
-  version: "1.0.0"
+  version: "1.0.1"
 ---
 
 # openspec change 全流程
@@ -42,3 +42,7 @@ metadata:
 **合并模板**  
 包含：当前 Worktree 名称、源分支名称。  
 要求：仅使用 `rebase` + `merge --ff-only`，不允许产生合并提交；变基冲突按步骤 5 的规则处理（可自行裁决的自主解决，拿不准的停下问用户，严禁 `--skip`）。
+
+## 输出语言
+
+与用户对话的语言跟随用户提问语言。

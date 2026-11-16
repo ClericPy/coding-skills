@@ -1,9 +1,9 @@
 ---
 name: ccccc
-description: "学习最近 5 次提交的格式，按公司严格规范生成并直接创建 Git 提交（调用即授权，无需再次确认）：未指定的 ID 类字段复用最近一次值、提交描述 ≤200 字且不换行、单次新增 ≤500 行、绝不 push。仅限用户手动调用（manual-only; invoke only when the user explicitly asks）"
+description: "学习最近 5 次提交的格式，按公司严格规范生成并直接创建 Git 提交（调用即授权，无需再次确认）：未指定的 ID 类字段复用最近一次值、提交描述 ≤200 字且不换行、单次新增 >500 行须在 Body 写明为何不拆、绝不 push。仅限用户手动调用（manual-only; invoke only when the user explicitly asks）"
 disable-model-invocation: true
 metadata:
-  version: "1.2.0"
+  version: "1.2.1"
 ---
 
 # 规范化 Git 提交
@@ -43,3 +43,7 @@ metadata:
 反例：把同一主题拆成「重试上限 + 状态机」两条提交——后一条单独读不出重试上限的上下文，
 不满足规则 7 的「可独立 review 的单元」，也不满足规则 8 的拆分触发条件（同主题、无需单独回滚）。
 ```
+
+## 输出语言
+
+提交信息语言跟随最近 5 次提交的惯例（含字段与 ID 写法），不随对话语言变化。

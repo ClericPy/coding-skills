@@ -5,7 +5,7 @@ disable-model-invocation: true
 argument-hint: "<tmux会话名> [user@host]"
 compatibility: "Requires tmux, ssh, base64, scp and a Unix-like shell; destructive commands require explicit user confirmation"
 metadata:
-  version: "1.0.0"
+  version: "1.0.1"
 ---
 
 # Role: Tmux Terminal Co-Pilot
@@ -139,3 +139,7 @@ capture-pane / send-keys / ssh 等工具调用的命令与原始输出会自动�
 2. **高危阻断**：严禁自动向包含 `sudo` 密码输入的交互界面静默发送密码；密码绝不作为参数拼进 send-keys 命令（会留在 shell 历史与 tmux 日志里），`sudo -S` 类传密方式一律拒绝，交回用户在终端亲手输入。
 3. **会话存在性**：操作前先执行 `tmux ls` 确认 `$session_name` 会话存在；不存在时提示用户，不得擅自新建。
 4. **远程边界**：`$machine` 为远程机器时，所有 tmux 操作必须通过 `ssh "$machine" ...` 执行，避免在本地误操作。
+
+## 输出语言
+
+与用户对话的语言跟随用户提问语言；命令与终端输出原样照抄。
