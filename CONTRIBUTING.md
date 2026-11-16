@@ -3,6 +3,8 @@
 本仓库是一个 Agent Skills 集合，通过 [`npx skills add`](https://github.com/vercel-labs/skills) 分发。
 新增或修改技能时，请遵守下面的硬规则；改完必须跑仓库自检。
 
+格式以 [Agent Skills 规范](https://agentskills.io/specification) 为准（`name` / `description` / `license` / `compatibility` / `metadata` / `allowed-tools` 六个标准字段）；本仓库在此之上只加仓库级约定：不写 `license`（根 LICENSE 兜底）、`description` 与 `name` 写成单行引号字符串、额外接受 `disable-model-invocation` 与 `argument-hint` 两个 Claude Code 扩展字段。
+
 ## 目录结构
 
 ```
@@ -51,8 +53,21 @@ coding-skills/
 
 ## references/ 与 scripts/
 
+技能按三层加载，判断"什么内容该放哪一层"只看下面这张表：
+
+| 层 | 内容 | 何时进上下文 | 约束 |
+| --- | --- | --- | --- |
+| 1. metadata | `name` + `description` | 常驻 | 只用于决定"要不要加载这个技能"，所以 description 必须写清触发场景 |
+| 2. SKILL.md 正文 | 判断 + 流程 + 何时读哪里 | 技能触发时整份加载 | 超过 500 行自检报 warning |
+| 3. `references/`、`scripts/` | 规则表、命令清单、长篇解释、可执行脚本 | 按需 | 长度不设限；脚本可以只执行、不读源码 |
+
+推论：正文里凡是"背下来也没用、只在某一步才用得上"的内容一律下沉到第 3 层，正文只留指针。
+
 - **`references/*.md`**：SKILL.md 只留流程与契约，把大段规则、清单、表格下沉到这里，并在 SKILL.md 里写明**何时读取**。SKILL.md 正文超过 500 行时自检会给出 warning。
+  - **标注载荷时机**：引用要写清它在流程第几步用，别只写文件名——例如 `详细规则 → references/dimensions.md（流程第 2 步：逐维度审查）`。只给文件名会让模型一次性把全部 references 读完，第 3 层的意义就没了。
+  - 单个 reference 超过 300 行时，在里面自己加一节目录（见 `skills/ppppp/references/templates.md`）。
 - **`scripts/*.py`**：技能要执行的机械步骤（如发现改动文件、跑外部工具）。脚本不要写仓库，级别判定这类判断题留在 SKILL.md 里由模型完成。脚本自身的后置校验至少 L2。
+  - **脚本当黑盒**：SKILL.md 里必须写明「先跑 `--help`，源码只在它跑不动时读」。自带脚本动辄上千行（`change-linter` 的 `verify.py` 约 1400 行），整份读进上下文就为了跑一条命令，是纯浪费。
   - **调用写成 `uv run --no-project "$SKILL_DIR/scripts/x.py"`**（`SKILL_DIR="${ZCODE_SKILL_DIR:-${CLAUDE_SKILL_DIR}}"`，由 harness 展开自己的技能目录变量）。uv 自带 Python，所以一条命令跨全平台，**不要为不同系统各写一个启动器**，也不依赖系统上有没有 `python`。
   - **禁止**写 `python scripts/x.py` 这类相对路径：Bash 的 cwd 是用户项目目录，不是技能目录。
   - 整个技能目录（含 `scripts/`、`references/`）都会随 `npx skills add` 一起安装，所以脚本里不要写死本机绝对路径。
@@ -60,7 +75,7 @@ coding-skills/
 ## 新增技能 checklist
 
 1. `mkdir skills/<name>`，并把 `templates/SKILL.md.tmpl` 复制为 `skills/<name>/SKILL.md`。
-2. 填 `name`（与目录同名）与 `description`；按上面的原则决定是否写 `disable-model-invocation`。
+2. 填 `name`（与目录同名）与 `description`；按上面的原则决定是否写 `disable-model-invocation`；补 `metadata.version`（首次 `"1.0.0"`，之后随内容改动递增）。
 3. 需要时添加 `references/` 或 `scripts/`，并在 SKILL.md 中说明何时使用。
 4. 在 `README.md` 技能表里加一行，**链接必须是 `[name](./skills/<name>/SKILL.md)`** 这个形式——自检靠它核对索引。
 5. 跑 `uv run --no-project scripts/validate.py`，必须通过。

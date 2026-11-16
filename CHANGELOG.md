@@ -5,6 +5,7 @@
 
 ## 未发布
 
+- **20:28** `docs:` CONTRIBUTING 补齐技能「怎么写」的三块判据（此前只有「何时读取」一句）。①**标准指针**：开头补 [Agent Skills 规范](https://agentskills.io/specification) 链接，并写明本仓库只在六字段之上加三条仓库级约定（不写 license、单行引号字符串、接受两个 Claude Code 扩展字段）——只引标准不 vendor 标准正文，避免标准升级后本地副本过期。②**三层加载表**：metadata（常驻，只用于决定要不要加载）/ SKILL.md 正文（整份加载，>500 行警告）/ references 与 scripts（按需、长度不设限、脚本可只执行不读源码），并给出推论「背下来也没用、只在某一步用得上的内容一律下沉」。③**载荷时机与脚本黑盒**：references 要标注「流程第几步读」而不是只写文件名，否则模型会一次性全读；scripts 必须在 SKILL.md 里写明「先 `--help`，源码只在跑不动时读」。新增技能 checklist 第 2 步补 `metadata.version`。
 - **20:27** `feat:` `validate.py` 补 6 项硬校验，把 CONTRIBUTING 里「写了但没拦」的规则变成可拦。①**块标量拦截**（error）：`description: >-` 会被单行解析器读成字面量 `">-"`（长度 2），1024 上限与语义一并失效，现在直接报错。②**`compatibility` ≤500**（error）：上限早写在 CONTRIBUTING，此前无校验。③**`license` 字段提醒**（warning）：本仓库约定由根 LICENSE（MIT）兜底，不写 per-skill license。④**未知字段白名单**（warning）：拼错的 `disable-model-invocationn` 会让仅手动技能被静默当成「可自动触发」，现在按白名单报出。⑤**`references/`·`scripts/` 引用存在性**（error）：SKILL.md 用反引号引用的自带文件不存在时报错，此前 `--strict` 全绿。⑥**`metadata.version`**：缺失只告警（先落字段后立校验的中间态不该打红），格式必须是 X.Y.Z。解析器顺带支持一层缩进子键（`metadata.version`），仍是手写单行解析、不是 YAML。`check_skill` 因新增校验触发 C901（复杂度 15 > 12），拆成 `check_identity` / `check_invocation` / `check_fields` / `check_body` 四个小函数，聚合器只做拼接。CONTRIBUTING 的「自检覆盖」与 `metadata` 字段行同步。
 - **20:27** `test:` `test_verify.py` 37 → 44 例，逐项覆盖上述 6 条：未知字段告警、块标量报错、compatibility 501 字符报错、license 告警（非 strict 退 0 / strict 退 1）、死引用报错、version 格式错报错、缺 version 只告警。全部复用 `ValidateCliTest` 的临时仓库夹具（`copy_repo_inputs` + 新增 `rewrite_skill`），只断言退出码与输出。
 
