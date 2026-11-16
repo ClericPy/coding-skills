@@ -19,7 +19,7 @@ npx skills add ClericPy/coding-skills -a <agent> --skill change-linter -y # inst
 
 `<agent>` 是 harness 名，例如 `claude-code`、`codex`、`opencode`；可用 `npx skills add --help` 查看本机 CLI 认的全部取值。
 
-Skills: **ccccc** (normalized git commits) · **ppppp** (prompt modulator, 10 templates) · **ttttt** (tmux terminal co-pilot) · **wwwww** (openspec change flow) · **yyyyy** (change acceptance & archive) · **code-review-expert** (senior-level code review) · **change-linter** (L1–L4 post-edit checks, auto-triggered)
+Skills: **ccccc** (normalized git commits) · **ppppp** (prompt modulator, 10 templates) · **ttttt** (tmux terminal co-pilot) · **wwwww** (openspec change flow) · **yyyyy** (change acceptance & archive) · **code-review-expert** (senior-level code review + prompt-doc review) · **change-linter** (L1–L4 post-edit checks, auto-triggered)
 
 Details in the Chinese sections below. Installed copies are snapshots: refresh them with `npx skills update -g -y` (or re-run `add`), remove with `npx skills remove <name>`.
 
@@ -56,7 +56,7 @@ npx skills add ClericPy/coding-skills -a <agent> --skill change-linter -y
 | [**ttttt**](./skills/ttttt/SKILL.md) | ⚠️ 接管 tmux 会话执行终端操作：「看-想-做」闭环，含 base64 防转义通道与破坏性命令确认 | `/ttttt` | 仅手动 |
 | [**wwwww**](./skills/wwwww/SKILL.md) | 执行 openspec change 全流程：Worktree 隔离 → 实现自测 → 验收 → 存档 → 提交 → rebase + merge --ff-only 合并 | `/wwwww` | 仅手动 |
 | [**yyyyy**](./skills/yyyyy/SKILL.md) | 验收进行中的变更（spec 变更或 openspec change，自动判断）：文档代码对齐、测试全过、闸门检查（证据锚定 / 配套同步 / 依赖锁文件 / 发布面 / 静默破坏疑点），通过后存档清理。只做闸门，深审请手动 `/code-review-expert` | `/yyyyy` | 仅手动 |
-| [**code-review-expert**](./skills/code-review-expert/SKILL.md) | 资深架构师级 Code Review 与 Spec 验收：七维度审查（逻辑正确性、契约与环境、架构设计、健壮性与并发、可观测性、性能成本、向后兼容），仅报 ≥80% 置信度问题并分 Blocker/Major/Minor 三档 | `/code-review-expert` | 仅手动 |
+| [**code-review-expert**](./skills/code-review-expert/SKILL.md) | 资深架构师级 Code Review 与文档审验（代码侧含 Spec 验收）：代码按七维度审查（逻辑正确性、契约与环境、架构设计、健壮性与并发、可观测性、性能成本、向后兼容）；提示词文档（SKILL.md / AGENTS.md / CONTRIBUTING / README / templates）按文本判据 T1–T7 与提示词判据 P8–P15 审验表述与可执行性。仅报 ≥80% 置信度问题并分 Blocker/Major/Minor 三档，文档类只出报告、不改被审文件 | `/code-review-expert` | 仅手动 |
 | [**change-linter**](./skills/change-linter/SKILL.md) | 改动 Python / Shell 后判定并执行 L1–L4 分级后置校验（另可按需叠加 `--security` bandit 源码安全扫描与 `--deps` pip-audit 依赖漏洞审计两个正交轴），并如实报告工具缺失导致的未校验缺口 | `/change-linter` | 可自动触发 |
 
 **仅手动** = 只能由你在 `/` 菜单里主动调用；**可自动触发** = 模型也会在合适时机自己调用（同时仍可手动调用）。
