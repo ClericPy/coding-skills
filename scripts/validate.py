@@ -54,9 +54,10 @@ VERSION_PATTERN = re.compile(r"^\d+\.\d+\.\d+$")
 BODY_MAX_LINES = 500
 INDEX_PATTERN = re.compile(r"\./skills/([^/)\s]+)/SKILL\.md")
 # SKILL.md 里引用自带文件的两种写法（反引号与 markdown 链接），目标必须真实存在；
-# 含 `<...>` 的是模板占位符，跳过不判
+# 含 `<...>` 的是模板占位符、`#` 之后是锚点、`./` 是等价前缀，判定前统一归一化
 POINTER_PATTERN = re.compile(
-    r"`((?:references|scripts)/[^`\s]+)`|\]\(((?:references|scripts)/[^)\s]+)\)"
+    r"`((?:\./)?(?:references|scripts)/[^`\s]+)`"
+    r"|\]\(((?:\./)?(?:references|scripts)/[^)\s]+)\)"
 )
 BLOCK_SCALAR_MARKS = (">", "|")
 
@@ -96,46 +97,65 @@ class Problem:
 
 
 def strip_quotes(value: str) -> str:
-    """取出字段值：去掉成对引号，并丢掉引号之外的行尾注释。"""
+    """取出字段值：去掉成对引号，并丢掉引号之外的行尾注释。
+
+    整段就是注释时返回空串——否则 `parent` 会被清空（子键丢失），
+    或让只有注释的 description 通过非空校验。
+    """
+    if value.startswith("#"):
+        return ""
     if len(value) >= 2 and value[0] in "\"'" and value[0] in value[1:]:
         return value[1 : value.index(value[0], 1)]
     return value.split(" #", 1)[0].rstrip()
 
 
-def parse_frontmatter(text: str) -> dict[str, str] | None:
+def parse_top_level(line: str, fields: dict[str, str], quoted: set[str]) -> str | None:
+    """解析一行顶格字段；值为空时返回它作为子键父层级的键名。"""
+    key, separator, value = line.partition(":")
+    if not separator:
+        return None
+    raw = value.strip()
+    if raw[:1] in ('"', "'"):
+        quoted.add(key.strip())
+    cleaned = strip_quotes(raw)
+    fields[key.strip()] = cleaned
+    return key.strip() if not cleaned else None
+
+
+def parse_child(line: str, fields: dict[str, str], parent: str) -> None:
+    """解析一行缩进子键，写成 `parent.key`。"""
+    key, separator, value = line.strip().partition(":")
+    if separator:
+        fields[f"{parent}.{key.strip()}"] = strip_quotes(value.strip())
+
+
+def parse_frontmatter(text: str) -> tuple[dict[str, str], frozenset[str]] | None:
     """解析文件首个 `---` 块，止于下一个 `---`。
 
     顶格行收作顶层字段；紧跟其后的缩进行收作该字段的子键（`metadata.version`
-    这类，写成 `metadata.version`），用于校验版本号。正文里的 `---` 分隔线不会
-    影响结果，未闭合时返回 None。
+    这类，写成 `metadata.version`），用于校验版本号。整行 `#` 注释与行尾注释都
+    会丢掉。返回值第二项是「原始值以引号开头」的顶层字段集合——块标量只可能在
+    未加引号的值上，靠它区分。
 
     这里仍是手写单行解析，不是 YAML：`description: >-` 这类块标量会被原样读成
-    字面量 `">-"`，由 check_skill 单独拦下。
+    字面量 `">-"`，由 check_fields 单独拦下。
     """
     lines = text.splitlines()
     if not lines or lines[0].strip() != "---":
         return None
     fields: dict[str, str] = {}
+    quoted: set[str] = set()
     parent: str | None = None
     for line in lines[1:]:
         if line.strip() == "---":
-            return fields
+            return fields, frozenset(quoted)
         if not line or line.lstrip().startswith("#"):
             continue
         if line[0].isspace():
-            if parent is None:
-                continue
-            key, separator, value = line.strip().partition(":")
-            if separator:
-                fields[f"{parent}.{key.strip()}"] = strip_quotes(value.strip())
+            if parent is not None:
+                parse_child(line, fields, parent)
             continue
-        key, separator, value = line.partition(":")
-        if not separator:
-            parent = None
-            continue
-        cleaned = strip_quotes(value.strip())
-        parent = key.strip() if not cleaned else None
-        fields[key.strip()] = cleaned
+        parent = parse_top_level(line, fields, quoted)
     return None
 
 
@@ -153,14 +173,16 @@ def body_line_count(text: str) -> int:
 def load_skill(path: Path) -> Skill:
     """读取一个 SKILL.md 并解析出基本信息。"""
     text = path.read_text(encoding="utf-8-sig")
-    fields = parse_frontmatter(text) or {}
+    parsed = parse_frontmatter(text)
+    fields, quoted = parsed if parsed is not None else ({}, frozenset())
     manual_present = MANUAL_FIELD in fields
     manual_value = fields.get(MANUAL_FIELD) or None
     block_scalars = tuple(
         sorted(
             field
             for field in ("name", "description", "compatibility")
-            if (fields.get(field) or "")[:1] in BLOCK_SCALAR_MARKS
+            if field not in quoted
+            and (fields.get(field) or "")[:1] in BLOCK_SCALAR_MARKS
         )
     )
     unexpected = tuple(
@@ -368,11 +390,16 @@ def check_skill(skill: Skill) -> list[Problem]:
     ]
 
 
+def normalize_pointer(target: str) -> str:
+    """把引用目标归一化成技能目录下的相对路径：去掉锚点与 `./` 前缀。"""
+    return target.split("#", 1)[0].removeprefix("./")
+
+
 def check_pointers(skill: Skill) -> list[Problem]:
     """核对 SKILL.md 里引用的 references/ scripts/ 文件是否真实存在（反引号与链接两种写法）。"""
     label = f"{SKILLS_DIRNAME}/{skill.directory}/{SKILL_FILENAME}"
     targets = {
-        target
+        normalize_pointer(target)
         for group in POINTER_PATTERN.findall(skill.text)
         for target in group
         if target and "<" not in target

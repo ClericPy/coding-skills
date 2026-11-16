@@ -765,6 +765,83 @@ class ValidateCliTest(CliTestCase):
         self.assertEqual(code, 0, out)
         self.assertNotIn("必须写成 X.Y.Z", out)
 
+    def test_comment_only_metadata_value_keeps_subkey(self) -> None:
+        """`metadata:   # 主数据` 仍是空值：下一层子键必须保留，不能误报缺 version。"""
+        root = self.copy_repo_inputs()
+        self.rewrite_skill(root, "ccccc", "\nmetadata:", "\nmetadata:   # 主数据")
+        code, out = self.run_cli(root / "scripts" / "validate.py", root, "--strict")
+        self.assertEqual(code, 0, out)
+        self.assertNotIn("缺少 metadata.version", out)
+
+    def test_comment_only_description_is_reported_missing(self) -> None:
+        """`description:   # TODO 待补` 等于没写描述，必须报缺失而不是放过。"""
+        root = self.copy_repo_inputs()
+        target = root / "skills" / "ccccc" / "SKILL.md"
+        rewritten = [
+            "description:   # TODO 待补" if line.startswith("description:") else line
+            for line in target.read_text(encoding="utf-8").splitlines()
+        ]
+        target.write_text("\n".join(rewritten) + "\n", encoding="utf-8")
+        code, out = self.run_cli(root / "scripts" / "validate.py", root)
+        self.assertEqual(code, 1, out)
+        self.assertIn("缺少非空 description", out)
+
+    def test_quoted_value_with_gt_prefix_is_not_block_scalar(self) -> None:
+        """单行引号串以 `>=` 开头是合法的，不能判成块标量反过来要求改写。"""
+        root = self.copy_repo_inputs()
+        target = root / "skills" / "change-linter" / "SKILL.md"
+        text = target.read_text(encoding="utf-8")
+        line = next(
+            item for item in text.splitlines() if item.startswith("compatibility:")
+        )
+        target.write_text(
+            text.replace(line, 'compatibility: ">= Python 3.11; requires uv"'),
+            encoding="utf-8",
+        )
+        code, out = self.run_cli(root / "scripts" / "validate.py", root, "--strict")
+        self.assertEqual(code, 0, out)
+        self.assertNotIn("块标量", out)
+
+    def test_pointer_anchor_is_normalized(self) -> None:
+        """`references/x.md#L10` 的锚点不参与文件判定，两种写法都不许误报。"""
+        root = self.copy_repo_inputs()
+        target = root / "skills" / "change-linter" / "SKILL.md"
+        target.write_text(
+            target.read_text(encoding="utf-8")
+            + "\n分级见 [规则](references/lint-levels.md#L10) 与 `references/lint-levels.md#L10`。\n",
+            encoding="utf-8",
+        )
+        code, out = self.run_cli(root / "scripts" / "validate.py", root, "--strict")
+        self.assertEqual(code, 0, out)
+        self.assertNotIn("不存在", out)
+
+    def test_dot_slash_pointer_is_checked(self) -> None:
+        """`./references/...` 是等价写法，死链同样要报。"""
+        root = self.copy_repo_inputs()
+        target = root / "skills" / "ccccc" / "SKILL.md"
+        target.write_text(
+            target.read_text(encoding="utf-8")
+            + "\n见 [死链](./references/missing.md)。\n",
+            encoding="utf-8",
+        )
+        code, out = self.run_cli(root / "scripts" / "validate.py", root)
+        self.assertEqual(code, 1, out)
+        self.assertIn("references/missing.md", out)
+        self.assertIn("不存在", out)
+
+    def test_dot_slash_existing_pointer_passes(self) -> None:
+        """`./references/...` 指向真实文件时，不得误报。"""
+        root = self.copy_repo_inputs()
+        target = root / "skills" / "change-linter" / "SKILL.md"
+        target.write_text(
+            target.read_text(encoding="utf-8")
+            + "\n见 [规则](./references/lint-levels.md)。\n",
+            encoding="utf-8",
+        )
+        code, out = self.run_cli(root / "scripts" / "validate.py", root, "--strict")
+        self.assertEqual(code, 0, out)
+        self.assertNotIn("不存在", out)
+
     def test_dead_file_pointer_is_error(self) -> None:
         """SKILL.md 引用了不存在的 references/ 文件时必须报错，不能让 --strict 全绿。"""
         root = self.copy_repo_inputs()
