@@ -924,6 +924,21 @@ class ValidateCliTest(CliTestCase):
         self.assertEqual(code, 1, out)
         self.assertIn("块标量", out)
 
+    def test_block_scalar_on_non_text_fields_has_no_length_hint(self) -> None:
+        """metadata / allowed-tools 的裸块标量要报，但不能建议「加引号」或提长度上限。"""
+        root = self.copy_repo_inputs()
+        target = root / "skills" / "change-linter" / "SKILL.md"
+        text = target.read_text(encoding="utf-8")
+        text = text.replace("metadata:", "metadata: >-", 1)
+        text = text.replace("allowed-tools:", "allowed-tools: >-", 1)
+        target.write_text(text, encoding="utf-8")
+        code, out = self.run_cli(root / "scripts" / "validate.py", root)
+        self.assertEqual(code, 1, out)
+        self.assertIn("metadata 疑似 YAML 块标量", out)
+        self.assertIn("allowed-tools 疑似 YAML 块标量", out)
+        self.assertNotIn("绕过长度校验", out)
+        self.assertIn("按映射或清单写成单行", out)
+
 
 def main() -> int:
     """运行全部用例。"""

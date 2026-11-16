@@ -50,6 +50,8 @@ NAME_PATTERN = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 NAME_MAX_LENGTH = 64
 DESCRIPTION_MAX_LENGTH = 1024
 COMPATIBILITY_MAX_LENGTH = 500
+# 有长度上限、必须写成单行引号串的字段；块标量报错只对它们提「加引号」
+LENGTH_CHECKED_FIELDS: tuple[str, ...] = ("name", "description", "compatibility")
 VERSION_PATTERN = re.compile(r"^\d+\.\d+\.\d+$")
 BODY_MAX_LINES = 500
 INDEX_PATTERN = re.compile(r"\./skills/([^/)\s]+)/SKILL\.md")
@@ -308,6 +310,13 @@ def check_invocation(skill: Skill) -> list[Problem]:
     ]
 
 
+def block_scalar_hint(field: str) -> str:
+    """块标量报错的补充说明：只有做长度校验的自由文本字段才提「加引号」。"""
+    if field in LENGTH_CHECKED_FIELDS:
+        return "；多行写法会绕过长度校验，加引号写成单行字符串即可通过"
+    return "；该字段不是自由文本，按映射或清单写成单行"
+
+
 def check_fields(skill: Skill) -> list[Problem]:
     """compatibility、license、未知字段与 metadata.version 的规范。"""
     problems: list[Problem] = []
@@ -316,8 +325,7 @@ def check_fields(skill: Skill) -> list[Problem]:
         Problem(
             ERROR,
             f"{label}: {field} 疑似 YAML 块标量（值以 > 或 | 开头），"
-            "本仓库只支持单行引号字符串，多行写法会绕过长度校验"
-            "（加引号写成单行字符串即可通过）",
+            "本仓库只支持单行写法" + block_scalar_hint(field),
         )
         for field in skill.block_scalars
     )
