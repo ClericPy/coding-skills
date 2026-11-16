@@ -1,9 +1,9 @@
 ---
 name: code-review-expert
-description: "资深架构师级 Code Review（含 Spec 验收）与文档审验：代码按七维度审查（逻辑正确性、契约与环境、架构设计、健壮性与并发、可观测性、性能成本、向后兼容），提示词文档（SKILL.md / AGENTS.md / CONTRIBUTING / README / templates）按文本判据 T1–T7 与提示词判据 P8–P25 审验表述与可执行性；仅报 ≥80% 置信度问题并分 Blocker/Major/Minor 三档，文档类只出报告、禁止直接改文件，严禁 commit/push。闸门式验收（只判能不能收、能不能发，通过后存档清理）走 `/yyyyy`；纯文字润色（错别字、排版、措辞美化）与实现类工作不用本技能。仅限用户手动调用（manual-only; invoke only when the user explicitly asks）"
+description: "资深架构师级 Code Review（含 Spec 验收）与文档审验：代码按七维度审查（逻辑正确性、契约与环境、架构设计、健壮性与并发、可观测性、性能成本、向后兼容），提示词文档（SKILL.md / AGENTS.md / CONTRIBUTING / README / templates）按文本判据 T1–T7 与提示词判据 P8–P25 审验表述与可执行性；仅报 ≥80% 置信度问题并分 Blocker/Major/Minor 三档，文档类只出报告、禁止直接改文件，严禁 commit/push。闸门式验收（只判能不能收、能不能发，通过后存档清理）不在本技能范围；纯文字润色（错别字、排版、措辞美化）与实现类工作不用本技能。仅限用户手动调用（manual-only; invoke only when the user explicitly asks）"
 disable-model-invocation: true
 metadata:
-  version: "1.3.4"
+  version: "1.3.5"
 ---
 
 # 资深架构师级 Code Review 与文档审验
