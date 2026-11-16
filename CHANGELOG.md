@@ -5,6 +5,9 @@
 
 ## 未发布
 
+- **20:27** `feat:` `validate.py` 补 6 项硬校验，把 CONTRIBUTING 里「写了但没拦」的规则变成可拦。①**块标量拦截**（error）：`description: >-` 会被单行解析器读成字面量 `">-"`（长度 2），1024 上限与语义一并失效，现在直接报错。②**`compatibility` ≤500**（error）：上限早写在 CONTRIBUTING，此前无校验。③**`license` 字段提醒**（warning）：本仓库约定由根 LICENSE（MIT）兜底，不写 per-skill license。④**未知字段白名单**（warning）：拼错的 `disable-model-invocationn` 会让仅手动技能被静默当成「可自动触发」，现在按白名单报出。⑤**`references/`·`scripts/` 引用存在性**（error）：SKILL.md 用反引号引用的自带文件不存在时报错，此前 `--strict` 全绿。⑥**`metadata.version`**：缺失只告警（先落字段后立校验的中间态不该打红），格式必须是 X.Y.Z。解析器顺带支持一层缩进子键（`metadata.version`），仍是手写单行解析、不是 YAML。`check_skill` 因新增校验触发 C901（复杂度 15 > 12），拆成 `check_identity` / `check_invocation` / `check_fields` / `check_body` 四个小函数，聚合器只做拼接。CONTRIBUTING 的「自检覆盖」与 `metadata` 字段行同步。
+- **20:27** `test:` `test_verify.py` 37 → 44 例，逐项覆盖上述 6 条：未知字段告警、块标量报错、compatibility 501 字符报错、license 告警（非 strict 退 0 / strict 退 1）、死引用报错、version 格式错报错、缺 version 只告警。全部复用 `ValidateCliTest` 的临时仓库夹具（`copy_repo_inputs` + 新增 `rewrite_skill`），只断言退出码与输出。
+
 - **20:23** `docs:` 7 个技能 frontmatter 补 `metadata.version`（统一 `"1.0.0"`）。技能按快照安装、不跟随仓库更新，此前判断不了已装副本是哪一版，只能回查 CHANGELOG 日期；加版本号后「装的是哪版、要不要 update」可自证。只加字段，不改任何技能语义；校验放到下一个提交（先落字段后立校验，中间态不炸）。
 
 - **23:10** `docs:` 模板 AGENTS 更新（4334 → 4619 字符，+6.6%）：§3 交付补「（每段分条，不展开）」；§6 输出规则拆回四条——新增「结构」（首行结论、先概括后细节、同类归组组内 ≤5 条、一句一事实）与「行文」（不写预告客套、多步标 k/n、收尾给可执行动作）、「范围」单列（压缩仅作用于对话回复），「精炼」重写（只留影响判断或行动的信息，删过程叙述与评价性小结，删后回读保证结论不变）。

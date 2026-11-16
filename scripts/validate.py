@@ -27,15 +27,35 @@ SKILL_FILENAME = "SKILL.md"
 README_NAME = "README.md"
 
 MANUAL_FIELD = "disable-model-invocation"
+LICENSE_FIELD = "license"
+VERSION_FIELD = "metadata.version"
 
 # 该字段只认 true / false：其他拼写（yes / on / 1）在不同 harness 上解析结果可能不一致
 INVOCATION_VALUES: frozenset[str] = frozenset({"true", "false"})
 
+# 开放标准字段 + Claude Code 扩展字段；表外的顶层字段一律视为拼写错误（license 单列警告）
+KNOWN_FIELDS: frozenset[str] = frozenset(
+    {
+        "name",
+        "description",
+        "compatibility",
+        "metadata",
+        "allowed-tools",
+        "argument-hint",
+        MANUAL_FIELD,
+    }
+)
+
 NAME_PATTERN = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 NAME_MAX_LENGTH = 64
 DESCRIPTION_MAX_LENGTH = 1024
+COMPATIBILITY_MAX_LENGTH = 500
+VERSION_PATTERN = re.compile(r"^\d+\.\d+\.\d+$")
 BODY_MAX_LINES = 500
 INDEX_PATTERN = re.compile(r"\./skills/([^/)\s]+)/SKILL\.md")
+# SKILL.md 里用反引号写出的自带文件引用，必须真实存在
+POINTER_PATTERN = re.compile(r"`((?:references|scripts)/[^`\s]+)`")
+BLOCK_SCALAR_MARKS = (">", "|")
 
 ERROR = "error"
 WARNING = "warning"
@@ -55,6 +75,10 @@ class Skill:
     manual_only: bool
     manual_value: str | None
     body_lines: int
+    compatibility: str | None
+    version: str | None
+    unexpected_fields: tuple[str, ...]
+    has_license: bool
 
 
 @dataclass(frozen=True)
@@ -65,27 +89,46 @@ class Problem:
     message: str
 
 
+def strip_quotes(value: str) -> str:
+    """去掉最外层成对的引号。"""
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+        return value[1:-1]
+    return value
+
+
 def parse_frontmatter(text: str) -> dict[str, str] | None:
     """解析文件首个 `---` 块，止于下一个 `---`。
 
-    只取顶格的 `key: value`：正文里的 `---` 分隔线不会影响结果，
-    缩进的子键（如 metadata 的内容）会被跳过。未闭合时返回 None。
+    顶格行收作顶层字段；紧跟其后的缩进行收作该字段的子键（`metadata.version`
+    这类，写成 `metadata.version`），用于校验版本号。正文里的 `---` 分隔线不会
+    影响结果，未闭合时返回 None。
+
+    这里仍是手写单行解析，不是 YAML：`description: >-` 这类块标量会被原样读成
+    字面量 `">-"`，由 check_skill 单独拦下。
     """
     lines = text.splitlines()
     if not lines or lines[0].strip() != "---":
         return None
     fields: dict[str, str] = {}
+    parent: str | None = None
     for line in lines[1:]:
         if line.strip() == "---":
             return fields
-        if not line or line[0].isspace():
+        if not line:
+            continue
+        if line[0].isspace():
+            if parent is None:
+                continue
+            key, separator, value = line.strip().partition(":")
+            if separator:
+                fields[f"{parent}.{key.strip()}"] = strip_quotes(value.strip())
             continue
         key, separator, value = line.partition(":")
         if not separator:
+            parent = None
             continue
-        cleaned = value.strip()
-        if len(cleaned) >= 2 and cleaned[0] == cleaned[-1] and cleaned[0] in "\"'":
-            cleaned = cleaned[1:-1]
+        cleaned = strip_quotes(value.strip())
+        parent = key.strip() if not cleaned else None
         fields[key.strip()] = cleaned
     return None
 
@@ -106,6 +149,13 @@ def load_skill(path: Path) -> Skill:
     text = path.read_text(encoding="utf-8-sig")
     fields = parse_frontmatter(text) or {}
     manual_value = fields.get(MANUAL_FIELD) or None
+    unexpected = tuple(
+        sorted(
+            key
+            for key in fields
+            if "." not in key and key not in KNOWN_FIELDS and key != LICENSE_FIELD
+        )
+    )
     return Skill(
         directory=path.parent.name,
         path=path,
@@ -114,6 +164,10 @@ def load_skill(path: Path) -> Skill:
         manual_only=manual_value is not None and manual_value.lower() == "true",
         manual_value=manual_value,
         body_lines=body_line_count(text),
+        compatibility=fields.get("compatibility") or None,
+        version=fields.get(VERSION_FIELD) or None,
+        unexpected_fields=unexpected,
+        has_license=LICENSE_FIELD in fields,
     )
 
 
@@ -161,8 +215,8 @@ def check_layout(repo_root: Path, skills_root: Path) -> list[Problem]:
     return problems
 
 
-def check_skill(skill: Skill) -> list[Problem]:
-    """检查单个技能的 frontmatter 规范。"""
+def check_identity(skill: Skill) -> list[Problem]:
+    """name 与 description 的必填、格式、长度与块标量误写。"""
     problems: list[Problem] = []
     label = f"{SKILLS_DIRNAME}/{skill.directory}/{SKILL_FILENAME}"
     if skill.name is None:
@@ -190,26 +244,116 @@ def check_skill(skill: Skill) -> list[Problem]:
             )
         )
 
+    problems.extend(
+        Problem(
+            ERROR,
+            f"{label}: {field_name} 疑似 YAML 块标量（值以 {value[:1]!r} 开头），"
+            "本仓库只支持单行引号字符串，多行写法会绕过长度校验",
+        )
+        for field_name, value in (
+            ("name", skill.name),
+            ("description", skill.description),
+        )
+        if value and value[:1] in BLOCK_SCALAR_MARKS
+    )
+    return problems
+
+
+def check_invocation(skill: Skill) -> list[Problem]:
+    """disable-model-invocation 的取值语义。"""
+    if skill.manual_value is None or skill.manual_value.lower() in INVOCATION_VALUES:
+        return []
+    label = f"{SKILLS_DIRNAME}/{skill.directory}/{SKILL_FILENAME}"
+    return [
+        Problem(
+            WARNING,
+            f"{label}: {MANUAL_FIELD} 取值 {skill.manual_value!r} 语义不确定，请写成 true 或 false"
+            "（yes / on / 1 等写法在不同 harness 上可能被解析成相反的结果）",
+        )
+    ]
+
+
+def check_fields(skill: Skill) -> list[Problem]:
+    """compatibility、license、未知字段与 metadata.version 的规范。"""
+    problems: list[Problem] = []
+    label = f"{SKILLS_DIRNAME}/{skill.directory}/{SKILL_FILENAME}"
     if (
-        skill.manual_value is not None
-        and skill.manual_value.lower() not in INVOCATION_VALUES
+        skill.compatibility is not None
+        and len(skill.compatibility) > COMPATIBILITY_MAX_LENGTH
     ):
         problems.append(
             Problem(
-                WARNING,
-                f"{label}: {MANUAL_FIELD} 取值 {skill.manual_value!r} 语义不确定，请写成 true 或 false"
-                "（yes / on / 1 等写法在不同 harness 上可能被解析成相反的结果）",
+                ERROR,
+                f"{label}: compatibility 长度 {len(skill.compatibility)} 超过 {COMPATIBILITY_MAX_LENGTH} 字符",
             )
         )
 
-    if skill.body_lines > BODY_MAX_LINES:
+    if skill.has_license:
         problems.append(
             Problem(
                 WARNING,
-                f"{label}: 正文 {skill.body_lines} 行超过 {BODY_MAX_LINES} 行，考虑拆到 references/",
+                f"{label}: 不要写 {LICENSE_FIELD} 字段——由根 LICENSE（MIT）统一兜底",
+            )
+        )
+
+    problems.extend(
+        Problem(
+            WARNING,
+            f"{label}: 未识别的 frontmatter 字段 {field_name!r}，疑似拼写错误"
+            "（拼错的 disable-model-invocation 会被静默当成「可自动触发」）",
+        )
+        for field_name in skill.unexpected_fields
+    )
+
+    if skill.version is None:
+        problems.append(
+            Problem(
+                WARNING,
+                f'{label}: 缺少 {VERSION_FIELD}，建议从 "1.0.0" 起并随改动递增',
+            )
+        )
+    elif not VERSION_PATTERN.match(skill.version):
+        problems.append(
+            Problem(
+                ERROR,
+                f"{label}: {VERSION_FIELD} 必须写成 X.Y.Z（实际 {skill.version!r}）",
             )
         )
     return problems
+
+
+def check_body(skill: Skill) -> list[Problem]:
+    """正文行数上限。"""
+    if skill.body_lines <= BODY_MAX_LINES:
+        return []
+    label = f"{SKILLS_DIRNAME}/{skill.directory}/{SKILL_FILENAME}"
+    return [
+        Problem(
+            WARNING,
+            f"{label}: 正文 {skill.body_lines} 行超过 {BODY_MAX_LINES} 行，考虑拆到 references/",
+        )
+    ]
+
+
+def check_skill(skill: Skill) -> list[Problem]:
+    """检查单个技能的 frontmatter 规范。"""
+    return [
+        *check_identity(skill),
+        *check_invocation(skill),
+        *check_fields(skill),
+        *check_body(skill),
+    ]
+
+
+def check_pointers(skill: Skill) -> list[Problem]:
+    """核对 SKILL.md 里用反引号引用的 references/ scripts/ 文件是否真实存在。"""
+    text = skill.path.read_text(encoding="utf-8-sig")
+    label = f"{SKILLS_DIRNAME}/{skill.directory}/{SKILL_FILENAME}"
+    return [
+        Problem(ERROR, f"{label}: 引用的 {target} 不存在")
+        for target in sorted(set(POINTER_PATTERN.findall(text)))
+        if not (skill.path.parent / target).is_file()
+    ]
 
 
 def check_readme_index(repo_root: Path, skills: list[Skill]) -> list[Problem]:
@@ -291,6 +435,7 @@ def main(argv: list[str] | None = None) -> int:
     problems.extend(check_layout(repo_root, skills_root))
     for skill in skills:
         problems.extend(check_skill(skill))
+        problems.extend(check_pointers(skill))
     problems.extend(check_readme_index(repo_root, skills))
 
     errors = [item for item in problems if item.severity == ERROR]

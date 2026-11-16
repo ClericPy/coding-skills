@@ -40,7 +40,7 @@ coding-skills/
 | `compatibility` | 否 | ≤500 字符的环境要求声明（开放标准字段）。强环境依赖的技能应写，如 change-linter / ttttt / wwwww |
 | `argument-hint` | 否 | Claude Code 扩展：`/` 补全时的参数提示（如 `"<tmux会话名> [user@host]"`）；其他 harness 忽略，无害 |
 | `allowed-tools` | 否 | Claude Code 扩展（实验性）：预授权工具列表。官方推荐 `Bash(${CLAUDE_SKILL_DIR}/scripts/x.py *)` 让自带脚本免权限弹窗；**只给无副作用的脚本技能用** |
-| `metadata` | 否 | 自由元数据；本仓库暂未使用 |
+| `metadata` | 否 | 目前只认 `version`（`X.Y.Z`，随技能内容改动递增）：缺失告警、格式错报错。用于判断快照式安装的副本是哪一版 |
 
 ### 调用方式怎么选
 
@@ -80,7 +80,7 @@ uv run --no-project tests/test_install.py          # 安装行为回归（离线
 
 安装相关的实测结论（落点、符号链接、`--all` 的问题）见 README 的 Quickstart 说明。
 
-自检覆盖：根目录 `SKILL.md`、目录平铺层级、`.`/`_` 开头目录、`name` 与目录名一致性与 kebab-case、`description` 非空与长度、SKILL.md 正文行数、README 索引双向一致与重复条目。
+自检覆盖：根目录 `SKILL.md`、目录平铺层级、`.`/`_` 开头目录、`name` 与目录名一致性与 kebab-case、`description` 非空与长度、多行块标量拦截、`license` 字段提醒、未知字段白名单、`compatibility` 长度、`metadata.version` 格式、SKILL.md 正文行数、`references/`·`scripts/` 引用存在性、README 索引双向一致与重复条目。
 
 自检**只打印**每个技能的调用方式，不强制它必须手动或自动——两种都是合法设计。
 

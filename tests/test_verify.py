@@ -589,6 +589,14 @@ class ValidateCliTest(CliTestCase):
         shutil.copy(REPO_ROOT / "README.md", root / "README.md")
         return root
 
+    def rewrite_skill(self, root: Path, name: str, old: str, new: str) -> Path:
+        """改写临时仓库里某个技能的 SKILL.md，返回该文件路径。"""
+        target = root / "skills" / name / "SKILL.md"
+        text = target.read_text(encoding="utf-8")
+        self.assertIn(old, text)
+        target.write_text(text.replace(old, new, 1), encoding="utf-8")
+        return target
+
     def test_repository_passes_strict(self) -> None:
         code, out = self.run_cli(VALIDATE, REPO_ROOT, "--strict")
         self.assertEqual(code, 0, out)
@@ -612,6 +620,97 @@ class ValidateCliTest(CliTestCase):
         )
         self.assertEqual(code, 0)
         self.assertEqual(strict_code, 1)
+
+    def test_unknown_frontmatter_field_warns(self) -> None:
+        """拼错的字段名会被静默忽略：`disable-model-invocationn` 会把仅手动技能变成「可自动」。"""
+        root = self.copy_repo_inputs()
+        self.rewrite_skill(
+            root,
+            "ccccc",
+            "disable-model-invocation: true",
+            "disable-model-invocationn: true",
+        )
+        code, out = self.run_cli(root / "scripts" / "validate.py", root, "--strict")
+        self.assertEqual(code, 1, out)
+        self.assertIn("disable-model-invocationn", out)
+        self.assertIn("未识别", out)
+
+    def test_block_scalar_description_is_error(self) -> None:
+        """`description: >-` 会被单行解析器读成字面量 `>-`，长度校验随之失效，必须报错。"""
+        root = self.copy_repo_inputs()
+        target = root / "skills" / "ccccc" / "SKILL.md"
+        rewritten = []
+        for line in target.read_text(encoding="utf-8").splitlines():
+            if line.startswith("description:"):
+                rewritten.extend(["description: >-", "  学习最近 5 次提交的格式"])
+            else:
+                rewritten.append(line)
+        target.write_text("\n".join(rewritten) + "\n", encoding="utf-8")
+        code, out = self.run_cli(root / "scripts" / "validate.py", root)
+        self.assertEqual(code, 1, out)
+        self.assertIn("块标量", out)
+
+    def test_compatibility_over_limit_is_error(self) -> None:
+        """`compatibility` 的 500 字符上限写在 CONTRIBUTING 里，超了必须报错。"""
+        root = self.copy_repo_inputs()
+        target = root / "skills" / "change-linter" / "SKILL.md"
+        line = next(
+            item
+            for item in target.read_text(encoding="utf-8").splitlines()
+            if item.startswith("compatibility:")
+        )
+        self.rewrite_skill(
+            root, "change-linter", line, 'compatibility: "' + "x" * 501 + '"'
+        )
+        code, out = self.run_cli(root / "scripts" / "validate.py", root)
+        self.assertEqual(code, 1, out)
+        self.assertIn("compatibility 长度 501 超过 500", out)
+
+    def test_license_field_warns(self) -> None:
+        """本仓库约定不写 license（根 LICENSE 兜底），出现即提醒。"""
+        root = self.copy_repo_inputs()
+        self.rewrite_skill(root, "ccccc", "metadata:", "license: MIT\nmetadata:")
+        code, out = self.run_cli(root / "scripts" / "validate.py", root)
+        self.assertEqual(code, 0, out)
+        self.assertIn("不要写 license 字段", out)
+        strict_code, strict_out = self.run_cli(
+            root / "scripts" / "validate.py", root, "--strict"
+        )
+        self.assertEqual(strict_code, 1, strict_out)
+
+    def test_dead_file_pointer_is_error(self) -> None:
+        """SKILL.md 引用了不存在的 references/ 文件时必须报错，不能让 --strict 全绿。"""
+        root = self.copy_repo_inputs()
+        target = root / "skills" / "ccccc" / "SKILL.md"
+        target.write_text(
+            target.read_text(encoding="utf-8")
+            + "\n详细规则见 `references/missing.md`。\n",
+            encoding="utf-8",
+        )
+        code, out = self.run_cli(root / "scripts" / "validate.py", root, "--strict")
+        self.assertEqual(code, 1, out)
+        self.assertIn("references/missing.md", out)
+        self.assertIn("不存在", out)
+
+    def test_bad_version_format_is_error(self) -> None:
+        """`metadata.version` 必须是 X.Y.Z。"""
+        root = self.copy_repo_inputs()
+        self.rewrite_skill(root, "ccccc", '  version: "1.0.0"', '  version: "1.0"')
+        code, out = self.run_cli(root / "scripts" / "validate.py", root)
+        self.assertEqual(code, 1, out)
+        self.assertIn("metadata.version", out)
+
+    def test_missing_version_warns(self) -> None:
+        """缺 version 只告警：先落字段、后立校验的中间态不该把 --strict 打红。"""
+        root = self.copy_repo_inputs()
+        self.rewrite_skill(root, "ccccc", 'metadata:\n  version: "1.0.0"\n', "")
+        code, out = self.run_cli(root / "scripts" / "validate.py", root)
+        self.assertEqual(code, 0, out)
+        self.assertIn("缺少 metadata.version", out)
+        strict_code, strict_out = self.run_cli(
+            root / "scripts" / "validate.py", root, "--strict"
+        )
+        self.assertEqual(strict_code, 1, strict_out)
 
 
 def main() -> int:
