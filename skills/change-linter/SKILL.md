@@ -4,7 +4,7 @@ description: "改动 Python / Shell 文件后判定并执行 L1–L4 分级后�
 compatibility: "Requires git and uv (which provides Python); ruff required, ty/pyrefly/pyright/mypy/bandit/pip-audit optional"
 allowed-tools: Bash(${CLAUDE_SKILL_DIR}/scripts/verify.py *)
 metadata:
-  version: "1.1.1"
+  version: "1.1.2"
 ---
 
 # 改动分级后置校验
@@ -107,4 +107,4 @@ verify: 全部通过 (L2 + S + D)
 
 ## 输出语言
 
-汇报的语言跟随用户提问语言；工具输出与报错原文照抄，不翻译。
+汇报的语言跟随用户提问语言；工具输出与报错原文照抄，不翻译；汇报契约里的固定字段名（`后置校验` / `执行` / `缺失工具` / `verify`）保持原样，只翻译自由文本部分。
