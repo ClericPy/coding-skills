@@ -104,7 +104,7 @@ def skip_if_nothing_changed() -> str | None:
         return None
     return (
         f"无相关改动，跳过（HEAD {head[:7]} 与上次通过时一致，"
-        "skills/ scripts/ tests/ templates/ README.md 无 diff）。"
+        "skills/ scripts/ tests/ README.md 与根目录模板无 diff）。"
         "强制重跑加 --force，跑慢测用 CS_SLOW=1"
     )
 

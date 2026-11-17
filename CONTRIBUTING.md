@@ -9,25 +9,24 @@
 
 ```
 coding-skills/
-├── skills/<name>/SKILL.md     技能本体，平铺一层
-│   ├── references/            可选：按需读取的详细文档
-│   └── scripts/               可选：技能调用的辅助脚本
-├── templates/                 骨架与示例，不参与技能发现
-│   ├── SKILL.md.tmpl          新技能起点
-│   ├── AGENTS.md              AGENTS.md 成稿（可整份采用）
-│   └── install-prompt.md      批量安装技能与工具链的提示词（整段粘贴给 agent）
-├── scripts/validate.py        仓库自检
-├── tests/                     回归测试（不随技能分发）
-│   ├── test_verify.py         脚本行为
-│   └── test_install.py        安装行为（需 npx + 网络）
-└── README.md                  技能索引（必须与磁盘一致）
+├── TEMPLATE-AGENTS.md          全局工程规范成稿（可整份采用）
+├── TEMPLATE-install-prompt.md  批量安装技能与工具链的提示词（整段粘贴给 agent）
+├── TEMPLATE-SKILL.md           新技能起点（复制为 skills/<name>/SKILL.md）
+├── skills/<name>/SKILL.md      技能本体，平铺一层
+│   ├── references/             可选：按需读取的详细文档
+│   └── scripts/                可选：技能调用的辅助脚本
+├── scripts/validate.py         仓库自检
+├── tests/                      回归测试（不随技能分发）
+│   ├── test_verify.py          脚本行为
+│   └── test_install.py         安装行为（需 npx + 网络）
+└── README.md                   技能索引（必须与磁盘一致）
 ```
 
 ## 硬规则
 
 1. **技能必须平铺**在 `skills/<name>/SKILL.md`，不得出现更深层级。
 2. **仓库根目录禁止放 `SKILL.md`** —— CLI 会让它遮蔽全部子技能（除非调用方显式传 `--full-depth`）。
-3. **`skills/` 下不得有以 `.` 或 `_` 开头的目录** —— `skills/.curated`、`skills/.experimental`、`skills/.system` 是 CLI 的保留目录，其他 `.`/`_` 开头的目录会被当作技能扫描。这也是模板放在 `templates/` 而不是 `skills/_template/` 的原因。
+3. **`skills/` 下不得有以 `.` 或 `_` 开头的目录** —— `skills/.curated`、`skills/.experimental`、`skills/.system` 是 CLI 的保留目录，其他 `.`/`_` 开头的目录会被当作技能扫描。这也是模板放根目录并统一 `TEMPLATE-` 前缀的原因：既不进 `skills/` 扫描，也不会被 harness 当成项目指令加载。
 4. **目录名必须等于 frontmatter 里的 `name`**，且为 kebab-case（1–64 字符）。
 5. **改了 `.py` / `.sh` 必须跑 `change-linter`** 完成分级校验，未通过或工具缺失时不得声称完成。
 
@@ -74,7 +73,7 @@ coding-skills/
 
 ## 新增技能 checklist
 
-1. `mkdir skills/<name>`，并把 `templates/SKILL.md.tmpl` 复制为 `skills/<name>/SKILL.md`。
+1. `mkdir skills/<name>`，并把 `TEMPLATE-SKILL.md` 复制为 `skills/<name>/SKILL.md`。
 2. 填 `name`（与目录同名）与 `description`；按上面的原则决定是否写 `disable-model-invocation`；补 `metadata.version`（首次 `"1.0.0"`，之后随内容改动递增）。
 3. 需要时添加 `references/` 或 `scripts/`，并在 SKILL.md 中说明何时使用。
 4. 在 `README.md` 技能表里加一行，**链接必须是 `[name](./skills/<name>/SKILL.md)`** 这个形式——自检靠它核对索引。
