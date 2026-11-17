@@ -286,6 +286,11 @@ class VerifyCliTest(CliTestCase):
         self.assertEqual(code, 1)
         self.assertIn("py_compile", out)
         self.assertIn("必需工具缺失", out)
+        # 缺工具只提示不装：默认不联网，缺口按未校验标注
+        self.assertIn("本次未安装（默认不联网）", out)
+        self.assertIn("检查强度不足", out)
+        self.assertIn("--install-missing", out)
+        self.assertNotIn("安装缺失工具", out)
 
     def test_missing_ruff_still_catches_syntax_error(self) -> None:
         repo = self.make_repo({"bad.py": BAD_SYNTAX_PY})

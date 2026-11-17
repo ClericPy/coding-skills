@@ -4,7 +4,7 @@ description: "改动 Python / Shell 文件后判定并执行 L1–L4 分级后�
 compatibility: "Requires git and uv (which provides Python); ruff required, ty/pyrefly/pyright/mypy/bandit/pip-audit optional"
 allowed-tools: Bash(${CLAUDE_SKILL_DIR}/scripts/verify.py *)
 metadata:
-  version: "1.1.2"
+  version: "1.2.0"
 ---
 
 # 改动分级后置校验
@@ -36,7 +36,7 @@ metadata:
    - 自动发现会**排除本技能自身的安装副本**，排除数量会打印出来；确需检查这些文件时用 `--files` 显式指定。已删除的文件不会被送检；改动**仅为**删除文件时脚本空跑并报「无适用校验对象」。
    - 两个可选开关：**`--project-scope`**——判定为 L3/L4 且改动涉及公共接口 / 跨模块时加上，类型工具（ty/pyrefly/pyright/mypy）改扫整个项目；单文件检查抓不到「改签名破坏下游调用方」，此开关补上这个盲区，但会连带暴露项目存量类型错误，汇报时须区分存量与本次引入。**ruff 配置自动让位**——项目根有 `pyproject.toml`（含 `[tool.ruff]`）或 `ruff.toml` 时，脚本不传兜底参数，以项目自己的规则为准。
    - **复杂度随 L1 一起跑**：本次改动碰过的函数卡 8，同一次改动里没碰过的存量函数放宽到 12（8~12 记为「存量容忍」并打印出来）。它独立成一条 `complexity` 记录，与 ruff 风格检查分开；阈值判定在脚本内完成，不交给 ruff 退出码。
-3. **处理缺失工具** — 脚本报告工具缺失时，**先问用户一次**是否安装；用户同意才加 `--install-missing` 重跑。**被拒绝后同一会话内不再重复询问**（新会话可再问一次），只如实标注未校验。
+3. **处理缺失工具** — 脚本**默认只提示、不安装、不联网**（连工具版本查询也不做），缺口按未校验标注。脚本报工具缺失时，**先问用户一次**是否安装；用户同意才加 `--install-missing` 重跑（该开关会联网）。**被拒绝后同一会话内不再重复询问**（新会话可再问一次），只如实标注未校验。
 4. **汇报** — 输出 `verify:` 行；未真正校验的部分必须如实标注。
 
 ## 级别速查
@@ -88,6 +88,7 @@ verify: 全部通过 (L2)
 后置校验 L2
 执行: L1 ✓ | L2 ⚠ 降级
 缺失工具: ty → uv tool install ty --upgrade
+  本次未安装（默认不联网）：对应校验按未校验处理，检查强度不足；需要代装加 --install-missing
 verify: 未完全通过 — L2 因 ty 缺失未真正校验，不得视为已通过
 ```
 

@@ -49,6 +49,10 @@ SHELL_TOOL = "bash"
 PY_COMPILE_TOOL = "py_compile"
 PYCACHE_ENV = "PYTHONPYCACHEPREFIX"
 
+# pyright 包装器（pyright-python）每次纯文本运行都会查一次 PyPI 版本号，实测 4–8.5 秒且需联网；
+# 关掉这条版本告警查询后 1.2 秒。只影响「有没有新版本」的提示，不碰类型检查的判定。
+PYRIGHT_ENV: tuple[tuple[str, str], ...] = (("PYRIGHT_PYTHON_IGNORE_WARNINGS", "1"),)
+
 # 本技能自身的根目录：自动发现时排除，避免把技能的安装副本当成用户的改动
 SKILL_ROOT = Path(__file__).resolve().parent.parent
 
@@ -461,7 +465,10 @@ def _build_type_checks(
         ("pyright", ()),
     ):
         if tool in wanted and exe.get(tool):
-            checks.append(_make_check(tool, str(exe[tool]), (*command, *type_target)))
+            env = PYRIGHT_ENV if tool == "pyright" else ()
+            checks.append(
+                _make_check(tool, str(exe[tool]), (*command, *type_target), env)
+            )
     if "mypy" in wanted and exe.get("mypy"):
         # 默认隔离：mypy 用临时 cache-dir，避免写项目
         mypy_cache = () if fast else ("--cache-dir", str(temp_root / "mypy"))
@@ -880,7 +887,7 @@ def _install_missing(tools: list[str], cwd: Path, uv_exe: str) -> None:
     不返回安装结果：调用方随后重新探测工具，一律以探测结果为准。
     """
     for tool in tools:
-        print(f"安装缺失工具: uv tool install {tool} --upgrade")
+        print(f"安装缺失工具（需联网）: uv tool install {tool} --upgrade")
         result = _run((uv_exe, "tool", "install", tool, "--upgrade"), cwd)
         if result.code != 0:
             print(f"  安装失败: {result.output or 'unknown error'}")
@@ -919,7 +926,7 @@ def _report_sections(outcomes: list[CheckOutcome]) -> None:
 
 
 def _report_missing(hard: list[str], degraded: list[str]) -> None:
-    """打印缺失工具与补装提示。"""
+    """打印缺失工具与补装提示：默认只提示，不安装、不联网。"""
     missing = [*hard, *degraded]
     uv_missing = [tool for tool in missing if tool not in NON_UV_TOOLS]
     if uv_missing:
@@ -930,6 +937,11 @@ def _report_missing(hard: list[str], degraded: list[str]) -> None:
     if SHELL_TOOL in missing:
         print(
             f"缺失工具: {SHELL_TOOL} → 需自行安装 bash（Git Bash / WSL 等），uv 无法代装"
+        )
+    if missing:
+        print(
+            "  本次未安装（默认不联网）：对应校验按未校验处理，检查强度不足；"
+            "需要代装加 --install-missing"
         )
 
 
@@ -1024,7 +1036,9 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     )
     parser.add_argument("--probe", action="store_true", help="只打印工具清单后退出")
     parser.add_argument(
-        "--install-missing", action="store_true", help="经用户同意后安装缺失工具"
+        "--install-missing",
+        action="store_true",
+        help="经用户同意后联网安装缺失工具（默认只提示、不安装）",
     )
     args = parser.parse_args(argv)
     if not args.probe and not args.level:
