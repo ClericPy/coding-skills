@@ -6,11 +6,17 @@
 
 放在仓库根 `tests/` 而不是技能目录内 —— 技能目录会被 `npx skills add` 整包分发给用户。
 只用标准库，直接运行即可：
-    uv run --no-project tests/test_verify.py
+
+    uv run --no-project tests/test_verify.py            # 默认：跳过慢测
+    CS_SLOW=1 uv run --no-project tests/test_verify.py  # 全跑，含联网的集成用例
+
+默认模式先看仓库状态：工作区干净且 HEAD 与上次通过时一致时，打印「无相关改动，跳过」
+并 exit 0（`--force` 强制重跑）。慢测（真起外部工具 / 联网）默认跳过并显式计数。
 """
 
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
 import os
@@ -18,14 +24,108 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
+from collections.abc import Callable, Iterator
 from pathlib import Path
+from typing import Any, TypeVar, cast
 from unittest import mock
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 VERIFY = REPO_ROOT / "skills" / "change-linter" / "scripts" / "verify.py"
 VALIDATE = REPO_ROOT / "scripts" / "validate.py"
 GIT = shutil.which("git") or ""
+
+CS_SLOW = os.environ.get("CS_SLOW") == "1"
+SLOW_REASON = "慢测：真起外部工具或联网；用 CS_SLOW=1 全跑"
+STATE_DIR = Path(tempfile.gettempdir()) / "coding-skills-test-state"
+F = TypeVar("F", bound=Callable[..., object])
+
+
+def slow_test(func: F) -> F:
+    """标记默认不跑的慢测：真起外部工具或联网，`CS_SLOW=1` 才执行。"""
+    wrapped = unittest.skipUnless(CS_SLOW, SLOW_REASON)(func)
+    cast(Any, wrapped).__cs_slow__ = True
+    return wrapped
+
+
+def _git(*args: str) -> subprocess.CompletedProcess[str] | None:
+    """在仓库根跑一条只读 git 命令；git 缺失时返回 None。"""
+    if not GIT:
+        return None
+    return subprocess.run(  # noqa: S603
+        [GIT, *args],
+        cwd=str(REPO_ROOT),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        check=False,
+    )
+
+
+def _state_path() -> Path:
+    """每个仓库一个状态文件；放系统临时目录，不污染工作区。"""
+    digest = hashlib.sha256(str(REPO_ROOT).encode("utf-8")).hexdigest()[:16]
+    return STATE_DIR / f"{digest}.json"
+
+
+def record_passed_run(head: str) -> None:
+    """记下这次通过时的 HEAD，供下次判断有无相关改动。"""
+    payload = {
+        "repo": str(REPO_ROOT),
+        "head": head,
+        "slow": CS_SLOW,
+        "at": time.strftime("%Y-%m-%dT%H:%M:%S"),
+    }
+    try:
+        STATE_DIR.mkdir(parents=True, exist_ok=True)
+        _state_path().write_text(
+            json.dumps(payload) + "\n", encoding="utf-8", newline="\n"
+        )
+    except OSError:
+        pass  # 记不上只损失一次早退机会，不影响测试结论
+
+
+def skip_if_nothing_changed() -> str | None:
+    """工作区干净且 HEAD 与上次通过时一致时，返回要打印的跳过理由。"""
+    status = _git("status", "--porcelain")
+    head_proc = _git("rev-parse", "HEAD")
+    if status is None or head_proc is None or head_proc.returncode != 0:
+        return None
+    if any(line.strip() for line in status.stdout.splitlines()):
+        return None
+    head = head_proc.stdout.strip()
+    try:
+        state = json.loads(_state_path().read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if state.get("head") != head:
+        return None
+    return (
+        f"无相关改动，跳过（HEAD {head[:7]} 与上次通过时一致，"
+        "skills/ scripts/ tests/ templates/ README.md 无 diff）。"
+        "强制重跑加 --force，跑慢测用 CS_SLOW=1"
+    )
+
+
+def _iter_tests(suite: unittest.TestSuite) -> Iterator[unittest.TestCase]:
+    for item in suite:
+        if isinstance(item, unittest.TestSuite):
+            yield from _iter_tests(item)
+        else:
+            yield item
+
+
+def count_slow_tests(suite: unittest.TestSuite) -> int:
+    """数出被 slow_test 标记的用例条数（与它们当前是否被跳过无关）。"""
+    total = 0
+    for test in _iter_tests(suite):
+        method = getattr(type(test), test._testMethodName, None)
+        if getattr(method, "__cs_slow__", False):
+            total += 1
+    return total
+
 
 CLEAN_PY = "x = 1\n"
 BAD_PY = "import os\n\n\nx = 1\n"
@@ -225,11 +325,16 @@ class VerifyCliTest(CliTestCase):
         self.assertEqual(code, 0, out)
         self.assertIn("全部通过", out)
 
+    @slow_test
     def test_project_scope_catches_downstream_breakage(self) -> None:
         """--project-scope 让类型工具扫整个项目：改签名破坏的下游调用方必须被扫出。
 
         默认只查改动文件——a.py 改了签名、clean 的 caller.py 不在检查范围，漏报；
         项目级扫描时 caller.py 的存量类型错误被暴露。
+
+        慢测：两次 L3 要依次起 ruff + ty + pyrefly + pyright 并各扫一遍项目目录；
+        pyright 的版本查询已在 verify.py 里关掉（`PYRIGHT_PYTHON_IGNORE_WARNINGS=1`），
+        这条不再联网，只是仍比其余用例慢。
         """
         if not shutil.which("pyrefly"):
             self.skipTest("需要 pyrefly 才能覆盖项目级类型扫描")
@@ -427,14 +532,6 @@ def make_outcome(tool: str, detail: str, passed: bool = False):
 class AxisCliTest(CliTestCase):
     """两个正交轴（--security / --deps）的接线与报告口径。"""
 
-    def test_axis_label_lists_enabled_axes(self) -> None:
-        """报告头带上轴标记，轴是否生效一目了然。"""
-        repo = self.make_repo(
-            {"app.py": CLEAN_PY, "requirements.txt": "requests==2.19.0\n"}
-        )
-        _, out = self.run_cli(VERIFY, repo, "--level", "L1", "--security", "--deps")
-        self.assertIn("后置校验 L1 + S + D", out)
-
     def test_deps_without_source_is_reported_as_unverified(self) -> None:
         """找不到依赖来源时必须报「未校验」：裸跑 pip-audit 会给出假绿。"""
         repo = self.make_repo({"app.py": CLEAN_PY})
@@ -457,6 +554,28 @@ class AxisCliTest(CliTestCase):
         repo = self.make_repo({"run.sh": "echo hi\n"})
         _, out = self.run_cli(VERIFY, repo, "--level", "L1", "--security")
         self.assertIn("安全轴未校验", out)
+
+
+@unittest.skipIf(not GIT, "需要 git 才能构造临时仓库")
+class IntegrationSlowTest(CliTestCase):
+    """默认不跑的集成用例：真起外部工具，且需要网络。
+
+    按 AGENTS §3「真外部依赖只进默认不跑的集成测试」归到这里：默认模式跳过并显式计数，
+    由 `CS_SLOW=1` 或 CI / 容器环境显式开启。
+    """
+
+    @slow_test
+    def test_axis_label_lists_enabled_axes(self) -> None:
+        """报告头带上轴标记，轴是否生效一目了然。
+
+        需要网络：pip index —— pip-audit 要解析 requirements 并从 PyPI 查询漏洞数据，
+        实测单次约 20 秒；索引不可达时会重试到 39 秒。
+        """
+        repo = self.make_repo(
+            {"app.py": CLEAN_PY, "requirements.txt": "requests==2.19.0\n"}
+        )
+        _, out = self.run_cli(VERIFY, repo, "--level", "L1", "--security", "--deps")
+        self.assertIn("后置校验 L1 + S + D", out)
 
 
 class AxisFinalizeTest(unittest.TestCase):
@@ -940,11 +1059,35 @@ class ValidateCliTest(CliTestCase):
         self.assertIn("按映射或清单写成单行", out)
 
 
-def main() -> int:
-    """运行全部用例。"""
+def main(argv: list[str] | None = None) -> int:
+    """运行全部用例：无相关改动早退，慢测默认跳过并显式计数。"""
+    args = list(sys.argv[1:] if argv is None else argv)
+    force = "--force" in args
+    unknown = [arg for arg in args if arg != "--force"]
+    if unknown:
+        print(f"忽略未知参数: {' '.join(unknown)}（只支持 --force）", flush=True)
+    if not force and not CS_SLOW:
+        reason = skip_if_nothing_changed()
+        if reason is not None:
+            print(reason, flush=True)
+            return 0
     suite = unittest.TestLoader().loadTestsFromModule(sys.modules[__name__])
+    slow = count_slow_tests(suite)
+    skipped_slow = 0 if CS_SLOW else slow
+    if skipped_slow:
+        print(f"已跳过 {skipped_slow} 条慢测，用 CS_SLOW=1 全跑", flush=True)
     result = unittest.TextTestRunner(verbosity=2).run(suite)
-    return 0 if result.wasSuccessful() else 1
+    print(
+        f"跳过 {len(result.skipped)} 条"
+        f"（慢测 {skipped_slow} 条，环境跳过 {len(result.skipped) - skipped_slow} 条）",
+        flush=True,
+    )
+    if not result.wasSuccessful():
+        return 1
+    head_proc = _git("rev-parse", "HEAD")
+    if head_proc is not None and head_proc.returncode == 0:
+        record_passed_run(head_proc.stdout.strip())
+    return 0
 
 
 if __name__ == "__main__":
