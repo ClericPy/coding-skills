@@ -14,6 +14,7 @@ frontmatter 规范与 README 索引一致性。
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import io
 import re
 import sys
@@ -25,6 +26,8 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 SKILLS_DIRNAME = "skills"
 SKILL_FILENAME = "SKILL.md"
 README_NAME = "README.md"
+ROLES_TEMPLATE_NAME = "TEMPLATE-roles.md"
+ROLES_SKILL_DIRNAME = "role-factory"
 
 MANUAL_FIELD = "disable-model-invocation"
 LICENSE_FIELD = "license"
@@ -419,6 +422,63 @@ def check_pointers(skill: Skill) -> list[Problem]:
     ]
 
 
+def _load_roles_builder(repo_root: Path):
+    """载入 role-factory 自带的生成器；文件缺失时返回 None。"""
+    path = (
+        repo_root / SKILLS_DIRNAME / ROLES_SKILL_DIRNAME / "scripts" / "build_roles.py"
+    )
+    if not path.is_file():
+        return None
+    spec = importlib.util.spec_from_file_location("_role_factory_build_roles", path)
+    if spec is None or spec.loader is None:
+        return None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def check_roles_template(repo_root: Path) -> list[Problem]:
+    """根目录 TEMPLATE-roles.md 必须等于 role-factory references 的拼接结果。
+
+    只报告差异，不代跑生成器 —— 校验脚本不做写文件的副作用。
+    没装 role-factory 的仓库（含测试夹具）不适用本检查，直接跳过。
+    """
+    skill_dir = repo_root / SKILLS_DIRNAME / ROLES_SKILL_DIRNAME
+    if not skill_dir.is_dir():
+        return []
+    builder = _load_roles_builder(repo_root)
+    if builder is None:
+        return [
+            Problem(
+                ERROR,
+                f"缺少 {SKILLS_DIRNAME}/{ROLES_SKILL_DIRNAME}/scripts/build_roles.py，"
+                f"无法核对 {ROLES_TEMPLATE_NAME}",
+            )
+        ]
+    target = repo_root / ROLES_TEMPLATE_NAME
+    if not target.is_file():
+        return [
+            Problem(
+                ERROR,
+                f"缺少 {ROLES_TEMPLATE_NAME}，跑该技能的 scripts/build_roles.py 生成",
+            )
+        ]
+    try:
+        expected = builder.render()
+    except FileNotFoundError as exc:
+        return [Problem(ERROR, f"{ROLES_TEMPLATE_NAME} 的角色源文件缺失：{exc}")]
+    if target.read_text(encoding="utf-8") != expected:
+        return [
+            Problem(
+                ERROR,
+                f"{ROLES_TEMPLATE_NAME} 与 "
+                f"{SKILLS_DIRNAME}/{ROLES_SKILL_DIRNAME}/references/roles/ 不一致，"
+                "跑该技能自带的 scripts/build_roles.py 重新生成",
+            )
+        ]
+    return []
+
+
 def check_readme_index(repo_root: Path, skills: list[Skill]) -> list[Problem]:
     """双向核对 README 索引与磁盘技能。"""
     readme = repo_root / README_NAME
@@ -502,6 +562,7 @@ def main(argv: list[str] | None = None) -> int:
         problems.extend(check_skill(skill))
         problems.extend(check_pointers(skill))
     problems.extend(check_readme_index(repo_root, skills))
+    problems.extend(check_roles_template(repo_root))
 
     errors = [item for item in problems if item.severity == ERROR]
     warnings = [item for item in problems if item.severity == WARNING]

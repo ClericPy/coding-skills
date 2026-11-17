@@ -711,6 +711,7 @@ class ValidateCliTest(CliTestCase):
         for name in ("skills", "scripts"):
             shutil.copytree(REPO_ROOT / name, root / name)
         shutil.copy(REPO_ROOT / "README.md", root / "README.md")
+        shutil.copy(REPO_ROOT / "TEMPLATE-roles.md", root / "TEMPLATE-roles.md")
         return root
 
     def rewrite_skill(self, root: Path, name: str, old: str, new: str) -> Path:
