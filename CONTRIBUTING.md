@@ -11,6 +11,7 @@
 coding-skills/
 ├── TEMPLATE-AGENTS.md          全局工程规范成稿（可整份采用）
 ├── TEMPLATE-install-prompt.md  批量安装技能与工具链的提示词（整段粘贴给 agent）
+├── TEMPLATE-roles.md           五个角色 + 可选助理的完整提示词（整段粘贴进 Bot）
 ├── TEMPLATE-SKILL.md           新技能起点（复制为 skills/<name>/SKILL.md）
 ├── skills/<name>/SKILL.md      技能本体，平铺一层
 │   ├── references/             可选：按需读取的详细文档

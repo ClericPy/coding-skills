@@ -12,6 +12,7 @@
 | `TEMPLATE-SKILL.md` | 新技能起点，复制为 `skills/<name>/SKILL.md` 再填 frontmatter | 否 |
 | `TEMPLATE-AGENTS.md` | 作者在用的全局工程规范成稿，可整份采用 | 否 |
 | `TEMPLATE-install-prompt.md` | 批量安装技能与工具链的提示词，整段粘贴给 agent | 否 |
+| `TEMPLATE-roles.md` | 五个角色 + 可选助理的完整提示词，可直接粘贴进 Bot | 否 |
 | `scripts/validate.py` | 仓库自检：frontmatter、目录层级、引用存在性、README 索引 | 否 |
 | `tests/` | 回归测试（`test_verify.py` 脚本行为，`test_install.py` 安装行为） | 否 |
 | `CONTRIBUTING.md` | 新增/修改技能的硬规则与 frontmatter 字段表 | 否 |
