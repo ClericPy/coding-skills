@@ -14,14 +14,16 @@ REPO_ROOT = SKILL_DIR.parents[1]
 ROLES_DIR = SKILL_DIR / "references" / "roles"
 TARGET = REPO_ROOT / "TEMPLATE-roles.md"
 
-ROLE_ORDER = ("总管", "Arch", "DevOps", "QA", "助理")
+ROLE_ORDER = ("总管", "专家", "DevOps", "QA", "助理", "Builder")
 
 HEADER = (
     "<!-- 本文件由 skills/role-factory/scripts/build_roles.py 生成；"
     "内容源是 skills/role-factory/references/roles/*.md，改内容请改那里后重跑脚本。 -->"
 )
 
-PREAMBLE = "角色：总管 + 3 个职能角色（Arch / DevOps / QA）+ 可选助理。"
+PREAMBLE = (
+    "角色：总管 + 3 个职能角色（专家 / DevOps / QA）+ 两个可选（助理 / Builder）。"
+)
 
 
 def render() -> str:
