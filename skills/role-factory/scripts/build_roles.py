@@ -14,7 +14,7 @@ REPO_ROOT = SKILL_DIR.parents[1]
 ROLES_DIR = SKILL_DIR / "references" / "roles"
 TARGET = REPO_ROOT / "TEMPLATE-roles.md"
 
-ROLE_ORDER = ("总管", "专家", "DevOps", "QA", "助理", "Builder")
+ROLE_ORDER = ("总管", "专家", "DevOps", "QA", "助理", "BotBuilder")
 
 HEADER = (
     "<!-- 本文件由 skills/role-factory/scripts/build_roles.py 生成；"
@@ -22,7 +22,7 @@ HEADER = (
 )
 
 PREAMBLE = (
-    "角色：总管 + 3 个职能角色（专家 / DevOps / QA）+ 两个可选（助理 / Builder）。"
+    "角色：总管 + 3 个职能角色（专家 / DevOps / QA）+ 两个可选（助理 / BotBuilder）。"
 )
 
 
