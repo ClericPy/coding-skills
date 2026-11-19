@@ -22,15 +22,8 @@ SKILLS_DIR = REPO_ROOT / "skills"
 NPX = shutil.which("npx") or ""
 GIT = shutil.which("git") or ""
 
-ALL_SKILLS = (
-    "ccccc",
-    "change-linter",
-    "code-review-expert",
-    "ppppp",
-    "ttttt",
-    "wwwww",
-    "yyyyy",
-)
+# 以磁盘为准：技能目录增减时用例自动跟随，不再手工同步清单
+ALL_SKILLS = tuple(path.parent.name for path in sorted(SKILLS_DIR.glob("*/SKILL.md")))
 
 # 安装目标 harness：用一个 CLI 认的 agent 键做黑盒回归，落点即该 agent 自己的 skills 目录
 AGENT = "claude-code"
@@ -124,7 +117,7 @@ class InstallCliTest(unittest.TestCase):
         )
 
     def test_installed_files_match_source_byte_for_byte(self) -> None:
-        """安装不得改写任何文件（含 frontmatter）。"""
+        """安装不得改写任何源文件（含 frontmatter）；Python 缓存不参与比对。"""
         project = self.new_project()
         code, out = self.add(project, "-a", AGENT)
         self.assertEqual(code, 0, out)
@@ -168,14 +161,21 @@ class InstallCliTest(unittest.TestCase):
         installed = project / AGENT_DIR / "skills"
         self.assertEqual([p.name for p in installed.iterdir()], ["ccccc"])
 
+    @staticmethod
+    def _source_files(root: Path) -> list[Path]:
+        """列出参与比对的文件；跳过 __pycache__ 与 *.pyc（生成物不是源文件）。"""
+        return sorted(
+            path.relative_to(root)
+            for path in root.rglob("*")
+            if path.is_file()
+            and "__pycache__" not in path.parts
+            and path.suffix != ".pyc"
+        )
+
     def assert_same_tree(self, source: Path, installed: Path) -> None:
-        """逐文件字节级比对两个目录。"""
-        source_files = sorted(
-            p.relative_to(source) for p in source.rglob("*") if p.is_file()
-        )
-        installed_files = sorted(
-            p.relative_to(installed) for p in installed.rglob("*") if p.is_file()
-        )
+        """逐文件字节级比对两个目录，忽略 Python 缓存。"""
+        source_files = self._source_files(source)
+        installed_files = self._source_files(installed)
         self.assertEqual(source_files, installed_files)
         for relative in source_files:
             self.assertEqual(
