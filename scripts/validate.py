@@ -70,7 +70,7 @@ ERROR = "error"
 WARNING = "warning"
 
 MANUAL_LABEL = "仅手动"
-AUTO_LABEL = "可自动"
+AUTO_LABEL = "可自动触发"
 
 
 @dataclass(frozen=True)
@@ -299,7 +299,7 @@ def check_invocation(skill: Skill) -> list[Problem]:
             Problem(
                 WARNING,
                 f"{label}: {MANUAL_FIELD} 是空值，无法判定语义，将被当成「可自动触发」；"
-                "请显式写 true（仅手动）或 false（可自动）",
+                "请显式写 true（仅手动）或 false（可自动触发，可再限定为点名唤醒）",
             )
         ]
     if skill.manual_value.lower() in INVOCATION_VALUES:

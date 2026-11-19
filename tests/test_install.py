@@ -135,7 +135,7 @@ class InstallCliTest(unittest.TestCase):
                 )
 
     def test_invocation_mode_survives_install(self) -> None:
-        """装完后 6 个仅手动、1 个可自动的划分必须原样保留。"""
+        """装完后三种调用方式（仅手动 / 点名唤醒 / 可自动）必须原样保留。"""
         project = self.new_project()
         code, out = self.add(project, "-a", AGENT)
         self.assertEqual(code, 0, out)
@@ -144,7 +144,11 @@ class InstallCliTest(unittest.TestCase):
         automatic = (installed / "change-linter" / "SKILL.md").read_text(
             encoding="utf-8"
         )
+        pointed = (installed / "code-review-expert" / "SKILL.md").read_text(
+            encoding="utf-8"
+        )
         self.assertIn("disable-model-invocation: true", manual)
+        self.assertIn("disable-model-invocation: false", pointed)
         self.assertNotIn("disable-model-invocation", automatic)
 
     def test_reinstall_is_idempotent(self) -> None:

@@ -37,7 +37,7 @@ coding-skills/
 | --- | --- | --- |
 | `name` | 是 | kebab-case，1–64 字符，必须与所在目录名一致；不匹配会导致技能被丢弃 |
 | `description` | 是 | 非空，≤1024 字符；缺失或超长会导致技能被丢弃 |
-| `disable-model-invocation` | 否 | 置 `true` = **仅手动调用**；省略 = 除手动外**还会被模型自动触发** |
+| `disable-model-invocation` | 否 | 置 `true` = **仅手动调用**；置 `false` 或省略 = 除手动外**还会被模型自动触发**（`description` 里可再收窄成点名唤醒） |
 | `license` | 否 | 本仓库约定**不写**：由根 `LICENSE`（MIT）统一兜底 |
 | `compatibility` | 否 | ≤500 字符的环境要求声明（开放标准字段）。强环境依赖的技能应写，如 change-linter / ttttt / wwwww |
 | `argument-hint` | 否 | Claude Code 扩展：`/` 补全时的参数提示（如 `"<tmux会话名> [user@host]"`）；其他 harness 忽略，无害 |
@@ -46,10 +46,11 @@ coding-skills/
 
 ### 调用方式怎么选
 
-- **仅手动**：交互式、有副作用的动作（提交、接管终端、验收归档）。写 `disable-model-invocation: true`，`description` 是给人看的说明，可写全职责与红线。
+- **仅手动**：交互式、有副作用的动作（提交、接管终端）。写 `disable-model-invocation: true`，`description` 是给人看的说明，可写全职责与红线。
+- **点名唤醒**：动作有副作用、但希望被用户或其它 Bot 按名字唤起（如验收归档、深度代码评审）。写 `disable-model-invocation: false`，并在 `description` 末尾限定：仅在消息里出现 `[[技能名]]` 形式的点名（含直接写出全名）时调用，其余情形不主动使用。
 - **可自动触发**：应当在特定时机被模型自己想起的动作（如改完代码后的分级校验）。**不要**写该字段，且 `description` 必须写清**触发场景**——它是唯一的自动触发依据。中英双语写触发词能覆盖两种提问方式。
 
-判断依据很简单：如果「模型自己决定调用它」会造成不可预期的副作用，就设为仅手动。
+判断依据很简单：如果「模型自己决定调用它」会造成不可预期的副作用，就设为仅手动，或退一步用点名唤醒收窄触发面。
 
 ## references/ 与 scripts/
 
