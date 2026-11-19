@@ -727,6 +727,18 @@ class ValidateCliTest(CliTestCase):
         self.assertEqual(code, 0, out)
         self.assertIn("verify: 通过", out)
 
+    def test_false_invocation_is_labelled_pointed(self) -> None:
+        """`false` 不是「可自动触发」：清单必须标「点名唤醒」，否则收窄过的技能看起来没被收窄。"""
+        root = self.copy_repo_inputs()
+        code, out = self.run_cli(root / "scripts" / "validate.py", root)
+        self.assertEqual(code, 0, out)
+        for name in ("change-linter", "code-review-expert", "yyyyy"):
+            with self.subTest(skill=name):
+                lines = [line for line in out.splitlines() if f"name={name}" in line]
+                self.assertEqual(len(lines), 1, f"{name} 未出现在清单里：{out}")
+                self.assertIn("点名唤醒", lines[0])
+                self.assertNotIn("可自动触发", lines[0])
+
     def test_unrecognized_invocation_value_warns(self) -> None:
         """`disable-model-invocation: yes` 语义不确定，必须告警而不是静默当成「可自动」。"""
         root = self.copy_repo_inputs()
