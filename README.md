@@ -44,10 +44,10 @@ A personal coding-workflow skill collection for Claude Code and any tool that re
 | [**wwwww**](./skills/wwwww/SKILL.md) | 执行 openspec change 全流程：Worktree 隔离 → 实现自测 → 验收 → 存档 → 提交 → rebase + merge --ff-only 合并 | `/wwwww` | 仅手动 |
 | [**yyyyy**](./skills/yyyyy/SKILL.md) | 验收进行中的变更（spec 变更或 openspec change，自动判断）：文档代码对齐、测试全过、闸门检查，通过后存档清理。只做闸门，深审请点名 `[[code-review-expert]]` | `/yyyyy` | 点名唤醒 |
 | [**code-review-expert**](./skills/code-review-expert/SKILL.md) | 资深架构师级 Code Review 与文档审验：代码走七维度，提示词文档走文本与提示词判据；只报 ≥80% 置信度问题并分 Blocker/Major/Minor 三档，只给改法、不动手 | `/code-review-expert` | 点名唤醒 |
-| [**change-linter**](./skills/change-linter/SKILL.md) | 改动 Python / Shell 后判定并执行 L1–L4 分级后置校验，另可叠加源码安全扫描与依赖漏洞审计两个正交轴，并如实报告工具缺失导致的未校验缺口 | `/change-linter` | 可自动触发 |
+| [**change-linter**](./skills/change-linter/SKILL.md) | 改动 Python / Shell 后判定并执行 L1–L4 分级后置校验，另可叠加源码安全扫描与依赖漏洞审计两个正交轴，并如实报告工具缺失导致的未校验缺口；仅在 `[[change-linter]]` 点名，或角色指令明确写了按 `[[change-linter]]` 加载时触发 | `/change-linter` | 点名唤醒 |
 | [**role-factory**](./skills/role-factory/SKILL.md) | 建 Bot / 改角色指令 / 搭团队时出角色提示词：查重、备份旧指令、按项目裁剪，产出可直接粘贴的 instructions（默认带来源行）；只出文本，建 Bot 仍由 Main Bot 做 | `/role-factory` | 可自动触发 |
 
-**仅手动** = 只能由你在 `/` 菜单里主动调用；**点名唤醒** = `disable-model-invocation: false`，但 `description` 限定为只有消息里出现 `[[技能名]]` 形式的点名（或直接写出全名）时才调用，其余情形不主动使用；**可自动触发** = 模型也会在合适时机自己调用。**ttttt** 能向真实终端发键、经 ssh 操作远程机器，破坏性命令必须先经你确认（详见其 SKILL.md「安全防线」）。
+**仅手动** = 只能由你在 `/` 菜单里主动调用；**点名唤醒** = `disable-model-invocation: false`，但 `description` 限定为只有消息里出现 `[[技能名]]` 形式的点名（或直接写出全名），或角色指令明确写了按该名加载时才调用，其余情形不主动使用；**可自动触发** = 模型也会在合适时机自己调用。**ttttt** 能向真实终端发键、经 ssh 操作远程机器，破坏性命令必须先经你确认（详见其 SKILL.md「安全防线」）。
 
 ## 批量安装工具链（可选）
 

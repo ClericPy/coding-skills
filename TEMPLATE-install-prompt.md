@@ -257,7 +257,7 @@ npx skills add vercel-labs/agent-browser --agent <AGENTS> -g -y
 
 ## 第 9 步：ClericPy/coding-skills（skill）
 
-**简介**：中文 Python 开发者 ClericPy 个人维护的一组编码 skills 集合，含 7 个技能：`ccccc`（规范化提交）、`ppppp`（提示词调制）、`ttttt`（tmux 终端接管）、`wwwww`（openspec change 全流程）、`yyyyy`（变更验收，点名唤醒）、`code-review-expert`（代码审查，点名唤醒）、`change-linter`（L1–L4 分级后置校验，可自动触发）。属于 skill，用 npx skills 安装并绑定 agent。
+**简介**：中文 Python 开发者 ClericPy 个人维护的一组编码 skills 集合，含 8 个技能：`ccccc`（规范化提交）、`ppppp`（提示词调制）、`ttttt`（tmux 终端接管）、`wwwww`（openspec change 全流程）、`yyyyy`（变更验收，点名唤醒）、`code-review-expert`（代码审查，点名唤醒）、`change-linter`（L1–L4 分级后置校验，点名唤醒）、`role-factory`（建/改 Bot 角色与换届，可自动触发）。属于 skill，用 npx skills 安装并绑定 agent。
 
 > ⚠️ 两个坑：①`npx skills update` 是**更新**命令，只对已装过的技能生效，**不会首次安装**，没装过要先 `add`；②`update` 只认**技能名**，不认仓库 slug——写 `npx skills update ClericPy/coding-skills -g` 会输出 `No installed skills found matching:` 并**静默无操作**（实测退出码 0）。
 > ③个别技能 update 可能报失败，重跑一次 `add` 幂等覆盖即可，不会产生重复。

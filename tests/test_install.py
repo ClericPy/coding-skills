@@ -134,7 +134,7 @@ class InstallCliTest(unittest.TestCase):
         self.assertEqual(code, 0, out)
         installed = project / AGENT_DIR / "skills"
         manual = (installed / "ccccc" / "SKILL.md").read_text(encoding="utf-8")
-        automatic = (installed / "change-linter" / "SKILL.md").read_text(
+        automatic = (installed / "role-factory" / "SKILL.md").read_text(
             encoding="utf-8"
         )
         pointed = (installed / "code-review-expert" / "SKILL.md").read_text(

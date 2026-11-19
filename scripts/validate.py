@@ -70,6 +70,7 @@ ERROR = "error"
 WARNING = "warning"
 
 MANUAL_LABEL = "仅手动"
+POINTED_LABEL = "点名唤醒"
 AUTO_LABEL = "可自动触发"
 
 
@@ -517,8 +518,12 @@ def print_inventory(skills: list[Skill]) -> None:
             and skill.manual_value.lower() not in INVOCATION_VALUES
         ):
             mode = f"取值存疑({skill.manual_value})"
+        elif skill.manual_only:
+            mode = MANUAL_LABEL
+        elif skill.manual_present:
+            mode = POINTED_LABEL
         else:
-            mode = MANUAL_LABEL if skill.manual_only else AUTO_LABEL
+            mode = AUTO_LABEL
         print(f"  {skill.directory:<20} name={skill.name or '(缺失)':<20} {mode}")
     print()
 
