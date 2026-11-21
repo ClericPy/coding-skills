@@ -57,6 +57,12 @@ COMPATIBILITY_MAX_LENGTH = 500
 LENGTH_CHECKED_FIELDS: tuple[str, ...] = ("name", "description", "compatibility")
 VERSION_PATTERN = re.compile(r"^\d+\.\d+\.\d+$")
 BODY_MAX_LINES = 500
+# 中文正文的字节密度约为英文两倍，行数相同不代表加载成本相同；24,000 是经验参考值（非硬上限）
+BODY_MAX_BYTES = 24_000
+# 技能目录会随安装整包分发：可执行测试与场景文件一律不进去，人读的 TEST.md 不受限。
+# 缓存目录（__pycache__ / .pytest_cache）不在此列：本机跑测试就会生成，且安装 CLI 不会带上它们，
+# 拦在这里只会让「先跑测试再自检」必然变红。
+TEST_ARTIFACT_FILES = ("test_*.py", "*_test.py", "conftest.py", "test_scenarios.yaml")
 INDEX_PATTERN = re.compile(r"\./skills/([^/)\s]+)/SKILL\.md")
 # SKILL.md 里引用自带文件的两种写法（反引号与 markdown 链接），目标必须真实存在；
 # 含 `<...>` 的是模板占位符、`#` 之后是锚点、`./` 是等价前缀，判定前统一归一化
@@ -85,6 +91,7 @@ class Skill:
     manual_only: bool
     manual_value: str | None
     body_lines: int
+    body_bytes: int
     compatibility: str | None
     version: str | None
     unexpected_fields: tuple[str, ...]
@@ -183,6 +190,14 @@ def body_line_count(text: str) -> int:
     return len(lines)
 
 
+def body_byte_count(text: str) -> int:
+    """返回 frontmatter 之后正文的 UTF-8 字节数；没有 frontmatter 时返回全文。"""
+    parts = text.split("---", 2)
+    if len(parts) == 3 and not parts[0].strip():
+        return len(parts[2].encode("utf-8"))
+    return len(text.encode("utf-8"))
+
+
 def load_skill(path: Path) -> Skill:
     """读取一个 SKILL.md 并解析出基本信息。"""
     text = path.read_text(encoding="utf-8-sig")
@@ -205,6 +220,7 @@ def load_skill(path: Path) -> Skill:
         manual_only=manual_value is not None and manual_value.lower() == "true",
         manual_value=manual_value,
         body_lines=body_line_count(text),
+        body_bytes=body_byte_count(text),
         compatibility=fields.get("compatibility") or None,
         version=fields.get(VERSION_FIELD) or None,
         unexpected_fields=unexpected,
@@ -380,15 +396,37 @@ def check_fields(skill: Skill) -> list[Problem]:
 
 
 def check_body(skill: Skill) -> list[Problem]:
-    """正文行数上限。"""
-    if skill.body_lines <= BODY_MAX_LINES:
-        return []
+    """正文行数与字节数的参考上限（warning，不是硬失败）。"""
+    problems: list[Problem] = []
     label = f"{SKILLS_DIRNAME}/{skill.directory}/{SKILL_FILENAME}"
+    if skill.body_lines > BODY_MAX_LINES:
+        problems.append(
+            Problem(
+                WARNING,
+                f"{label}: 正文 {skill.body_lines} 行超过 {BODY_MAX_LINES} 行，考虑拆到 references/",
+            )
+        )
+    if skill.body_bytes > BODY_MAX_BYTES:
+        problems.append(
+            Problem(
+                WARNING,
+                f"{label}: 正文约 {skill.body_bytes} 字节超过参考值 {BODY_MAX_BYTES}；"
+                "中文按字节算密度更高，先判断是否该把细节下沉到 references/",
+            )
+        )
+    return problems
+
+
+def check_skill_payload(skills_root: Path) -> list[Problem]:
+    """技能目录整包分发：不得混入可执行测试与场景文件；人读的 TEST.md 允许。"""
     return [
         Problem(
-            WARNING,
-            f"{label}: 正文 {skill.body_lines} 行超过 {BODY_MAX_LINES} 行，考虑拆到 references/",
+            ERROR,
+            f"{found.as_posix()}: 技能目录会整包分发，可执行测试必须放仓库根 tests/；"
+            "人读的 TEST.md 断言清单不受限",
         )
+        for pattern in TEST_ARTIFACT_FILES
+        for found in sorted(skills_root.rglob(pattern))
     ]
 
 
@@ -568,6 +606,7 @@ def main(argv: list[str] | None = None) -> int:
         problems.extend(check_pointers(skill))
     problems.extend(check_readme_index(repo_root, skills))
     problems.extend(check_roles_template(repo_root))
+    problems.extend(check_skill_payload(skills_root))
 
     errors = [item for item in problems if item.severity == ERROR]
     warnings = [item for item in problems if item.severity == WARNING]

@@ -30,6 +30,8 @@ coding-skills/
 3. **`skills/` 下不得有以 `.` 或 `_` 开头的目录** —— `skills/.curated`、`skills/.experimental`、`skills/.system` 是 CLI 的保留目录，其他 `.`/`_` 开头的目录会被当作技能扫描。这也是模板放根目录并统一 `TEMPLATE-` 前缀的原因：既不进 `skills/` 扫描，也不会被 harness 当成项目指令加载。
 4. **目录名必须等于 frontmatter 里的 `name`**，且为 kebab-case（1–64 字符）。
 5. **改了 `.py` / `.sh` 必须跑 `change-linter`** 完成分级校验，未通过或工具缺失时不得声称完成。
+6. **单一真源 + 薄适配**：同一内容只写一处——角色原文在 `references/roles/`，`TEMPLATE-roles.md` 由脚本生成、禁止手改；不同 harness 的差异写成指向真源的薄配置，正文一律不复制。复制出来的第二份没有校验盯着，改一处漏一处。
+7. **技能目录整包分发**：可执行测试与场景文件（`test_*.py`、`*_test.py`、`conftest.py`、`test_scenarios.yaml`）放仓库根 `tests/`，放进技能目录会被装进用户副本，自检直接报错；人读的 `TEST.md` 断言清单属于文档，允许留在技能目录。缓存目录不查——本机跑测试就会生成，安装 CLI 也不会带上它们。
 
 ## frontmatter 字段
 
@@ -77,7 +79,7 @@ coding-skills/
 
 1. `mkdir skills/<name>`，并把 `TEMPLATE-SKILL.md` 复制为 `skills/<name>/SKILL.md`。
 2. 填 `name`（与目录同名）与 `description`；按上面的原则决定是否写 `disable-model-invocation`；补 `metadata.version`（首次 `"1.0.0"`，之后随内容改动递增）。
-3. 需要时添加 `references/` 或 `scripts/`，并在 SKILL.md 中说明何时使用。
+3. 需要时添加 `references/` 或 `scripts/`，并在 SKILL.md 中说明何时使用；高频、易说错口径的技能再补一份 `TEST.md`——5–8 条人工核对断言（该出现什么、不该出现什么、什么情形必须停下问），给评审用，不自动跑。
 4. 在 `README.md` 技能表里加一行，**链接必须是 `[name](./skills/<name>/SKILL.md)`** 这个形式——自检靠它核对索引。
 5. 跑 `uv run --no-project scripts/validate.py`，必须通过。
 6. 若改动了 `.py` / `.sh`，调用 `change-linter` 技能完成分级校验。
@@ -92,7 +94,9 @@ uv run --no-project tests/test_verify.py           # 脚本行为回归
 uv run --no-project tests/test_install.py          # 安装行为回归（离线自动跳过）
 ```
 
-`tests/` 下的用例都在临时项目里跑真实 CLI，只断言输出与退出码，因此**改了脚本行为或安装约定就要同步更新用例**。测试不放进技能目录——技能目录会被 `npx skills add` 整包分发给用户。
+`tests/` 下的用例都在临时项目里跑真实 CLI，只断言输出与退出码，因此**改了脚本行为或安装约定就要同步更新用例**。测试不放进技能目录——技能目录会被 `npx skills add` 整包分发给用户；`TEST.md` 是人读的断言清单，不受此限（自检只拦可执行测试与缓存）。
+
+自检还会报两类 warning：正文超过 500 行、或正文超过约 24,000 字节。字节口径是给中文正文兜底的——同样 100 行，中文字节数常是英文的两倍，行数看不出差别；24,000 是经验参考值，不是硬上限，超了先判断要不要下沉到 `references/`。
 
 安装相关的实测结论（落点、符号链接、`--all` 的问题）见 README 的 Quickstart 说明。
 
